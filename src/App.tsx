@@ -12,16 +12,18 @@ import {
 const INK = "#1c1917", PAPER = "#f7f5f1", BRAND = "#0f766e", BLUE = "#1d4ed8";
 const serif = { fontFamily: "Georgia, 'Times New Roman', serif" };
 
-const ROLES = [{ id: "DC", name: "Dir. Creativo" }, { id: "CP", name: "Redacción" }, { id: "DA", name: "Dir. de Arte" }, { id: "GR", name: "Gráfico" }, { id: "MM", name: "Multimedia" }];
-const LINEAS = ["Marcas y experiencias", "Negocios", "Temporalidades", "Onboarding"];
+const ROLES = [{ id: "DA", name: "Director de Arte" }, { id: "RD", name: "Redactor" }, { id: "GR", name: "Gráfico" }, { id: "MM", name: "Multimedia" }, { id: "CO", name: "Content" }, { id: "PR", name: "Preditor" }];
+const LINEAS = ["DC1", "DC2"]; // segmentos = bolsas de capacidad
 const CAP = {
-  "Marcas y experiencias": { DC: 20, CP: 244, DA: 122, GR: 163, MM: 163 },
-  "Negocios": { DC: 20, CP: 203, DA: 41, GR: 81, MM: 203 },
-  "Temporalidades": { DC: 20, CP: 244, DA: 81, GR: 163, MM: 163 },
-  "Onboarding": { DC: 20, CP: 244, DA: 41, GR: 163, MM: 163 },
+  DC1: { DA: 120, RD: 200, GR: 160, MM: 120, CO: 40, PR: 40 },
+  DC2: { DA: 200, RD: 200, GR: 80, MM: 120, CO: 40, PR: 40 },
 };
-const totalCapLinea = (l) => ROLES.reduce((a, r) => a + CAP[l][r.id], 0);
+const totalCapLinea = (l) => ROLES.reduce((a, r) => a + (CAP[l]?.[r.id] || 0), 0);
+const zeroRoles = () => Object.fromEntries(ROLES.map((r) => [r.id, 0]));
 const STRESS = 1.2;
+const LAB_EXEC = "Ejecutivo 9Lab"; // agencia interna modular
+const CAP_LAB = { DA: 80, RD: 120, GR: 120, MM: 120, CO: 40, PR: 40 }; // capacidad propia de 9Lab (parte modular agencia + equipo externo) · demo
+CAP["9Lab"] = CAP_LAB;
 
 const MARCAS = ["DIS", "TT", "DC", "SPR", "MCN"];
 const CLIENTES = ["DC", "MGM", "MTV", "AIG"];
@@ -30,11 +32,17 @@ const DIVISIONES = ["Quito", "Guayaquil"];
 const POS = ["Carla Ríos", "Andrés Pinto", "Sofía León", "Marco Díaz"];
 const EJECUTIVOS = ["M. Salazar", "J. Andrade", "P. Cevallos", "L. Mora"];
 const CAMPANAS = ["Día del niño", "Día del padre", "Día de la madre", "Verano Sierra", "Tu tarjeta", "Viajes exclusivos", "Aeropuertos", "Yatch Club", "Lanzamiento App", "Meta mensual", "Auto seguro", "Doble cupón", "Difiere tus compras", "Avances en efectivo", "Recuperados", "Perdidos", "Nuevos clientes", "Fidelizados"];
+const CATEGORIAS = ["Marcas", "Temporalidades", "Reputación", "Negocios", "Proveeduría"];
+const CAMP_CAT = { "Día del niño": "Temporalidades", "Día del padre": "Temporalidades", "Día de la madre": "Temporalidades", "Verano Sierra": "Temporalidades", "Tu tarjeta": "Marcas", "Viajes exclusivos": "Marcas", "Aeropuertos": "Marcas", "Yatch Club": "Marcas", "Lanzamiento App": "Marcas", "Meta mensual": "Negocios", "Auto seguro": "Negocios", "Doble cupón": "Negocios", "Difiere tus compras": "Negocios", "Avances en efectivo": "Negocios", "Recuperados": "Reputación", "Perdidos": "Reputación", "Nuevos clientes": "Proveeduría", "Fidelizados": "Proveeduría" };
+const catOf = (camp) => CAMP_CAT[camp] || "Negocios";
+const MARCA_SEG = { DC: "DC1", SPR: "DC1", MCN: "DC1", TT: "DC2", DIS: "DC2" };
+// Segmento (bolsa) según categoría: Marcas -> por marca; Temporalidades -> elegido al aceptar; Reputación/Negocios -> DC1; Proveeduría -> DC2
+const segFor = (cat, marca, chosen) => cat === "Marcas" ? (MARCA_SEG[marca] || "DC1") : cat === "Temporalidades" ? (chosen || "DC1") : cat === "Proveeduría" ? "DC2" : "DC1";
 const ETIQUETAS = [{ id: "simple", name: "Simple", f: 1.0, c: "#16a34a" }, { id: "media", name: "Media", f: 1.0, c: "#d97706" }, { id: "alta", name: "Compleja", f: 1.0, c: "#be123c" }];
 const etById = (id) => ETIQUETAS.find((e) => e.id === id) || ETIQUETAS[1];
 const PRIORIDADES = ["Baja", "Media", "Alta", "Urgente"];
 const PRIO_COLOR = { Baja: "#78716c", Media: "#0f766e", Alta: "#b45309", Urgente: "#be123c" };
-const CREATIVOS = { DC: "Renata Vega", CP: "Lucía Mena", DA: "Iván Costa", GR: "Pablo Núñez", MM: "Tomás Ruiz" };
+const CREATIVOS = { DA: "Iván Costa", RD: "Lucía Mena", GR: "Pablo Núñez", MM: "Tomás Ruiz", CO: "Renata Vega", PR: "Diego Salas" };
 
 const SKUS = [
   { id: "post", name: "Post Creación · Pieza", cor: "BA-DI-Post estático-016", cx: "simple", h: { DC: 0, CP: 1, DA: 0, GR: 3, MM: 0 } },
@@ -70,6 +78,8 @@ const SKUS = [
   { id: "artefinal", name: "Arte Final · pieza", cor: "BA-GN-Arte Final-127", cx: "media", h: { DC: 0, CP: 0.5, DA: 0.5, GR: 0.5, MM: 0 } },
   { id: "planif", name: "Planificación Mensual", cor: "GP-GN-CM | Planificación De Contenido-003", cx: "media", h: { DC: 0, CP: 11, DA: 8, GR: 0, MM: 0 } },
 ];
+// Reasigna las horas de cada entregable a los nuevos roles (Dir. Creativo sale; entran Content y Preditor). Valores de demo ajustables.
+SKUS.forEach((s) => { const o = s.h; s.h = { DA: (o.DA || 0) + Math.round((o.DC || 0) * 0.6), RD: o.CP || 0, GR: o.GR || 0, MM: o.MM || 0, CO: Math.round((o.DC || 0) * 0.25), PR: Math.round((o.MM || 0) * 0.25) }; });
 const skuById = (id) => SKUS.find((s) => s.id === id);
 const PLANTILLAS = [
   { id: "rrss", name: "Pack RRSS mensual", items: [["post", "simple", 12], ["adapt", "simple", 8], ["banner", "media", 3]] },
@@ -395,14 +405,19 @@ const SEED = BASE.map((r, i) => {
   const acc = r[9] === "aceptado";
   let est = r[11] === "pausa" ? "pausada" : r[9];
   let ejec = r[11], avance = r[10], dia = null, arch = r[11] === "entregada";
+  const cat = catOf(r[2]);
+  const seg = segFor(cat, r[0], cat === "Temporalidades" ? (i % 2 ? "DC2" : "DC1") : null);
+  const cantidad = Math.max(1, Math.round(r[8] * (seg === "DC1" ? 0.5 : 0.85)));
   if (r[5] === 0 && acc && est !== "pausada") {
     const nd = i % 5;
     if (nd < SEED_TODAY) { ejec = "entregada"; avance = 100; arch = true; dia = nd; }
     else { dia = nd; }
   }
-  return { id: `E-${10 + i}`, marca: r[0], linea: r[1], campana: r[2], ejecutivo: r[3], poCliente: r[4], sem: r[5], fAire: iso(addDays(weekStart(r[5]), i % 5)), skuId: r[6], etiqueta: r[7], cantidad: r[8], estado: est, avance, ejecucion: ejec, brief: "", corCli: acc ? newCor() : null, corId: acc ? newCor() : null, corYear: acc ? COR_YEAR : null, prio: 0, prioridad: "Media", dia: est === "pausada" ? null : dia, archivado: arch };
+  return { id: `E-${10 + i}`, marca: r[0], linea: seg, categoria: cat, campana: r[2], ejecutivo: r[3], poCliente: r[4], sem: r[5], fAire: iso(addDays(weekStart(r[5]), i % 5)), skuId: r[6], etiqueta: r[7], cantidad, estado: est, avance, ejecucion: ejec, brief: "", corCli: acc ? newCor() : null, corId: acc ? newCor() : null, corYear: acc ? COR_YEAR : null, prio: 0, prioridad: "Media", dia: est === "pausada" ? null : dia, archivado: arch };
 });
 LINEAS.forEach((l) => { const inL = SEED.filter((i) => i.linea === l); [...new Set(inL.map((i) => i.campana))].forEach((c) => inL.filter((i) => i.campana === c).forEach((i, k) => (i.prio = k))); });
+// Algunas tareas ya delegadas a 9Lab (cambian de dueño al Ejecutivo 9Lab; siguen contando en su segmento y además en 9Lab)
+SEED.forEach((it, k) => { if (it.estado === "aceptado" && !it.archivado && it.ejecucion !== "entregada" && k % 11 === 4) { it.delegBy = it.ejecutivo; it.ejecutivo = LAB_EXEC; it.lab = true; } });
 const initCampOrder = {}; LINEAS.forEach((l) => { initCampOrder[l] = [...new Set(SEED.filter((i) => i.linea === l).map((i) => i.campana))]; });
 
 const ESTADO = {
@@ -470,34 +485,36 @@ function Main({ onExit }) {
   const fireToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
   const inWeek = (it) => weekFrac(it, week) > 0;
-  const inLinea = (it) => (lineaView === "General" ? (isDirector || myLines.includes(it.linea)) : it.linea === lineaView);
+  const inLinea = (it) => (lineaView === "9Lab" ? !!it.lab : lineaView === "General" ? (isDirector || myLines.includes(it.linea)) : it.linea === lineaView);
 
-  const consByW = useMemo(() => { const o = {}; LINEAS.forEach((l) => (o[l] = { DC: 0, CP: 0, DA: 0, GR: 0, MM: 0 })); items.filter((i) => i.estado === "aceptado").forEach((it) => { const f = weekFrac(it, week); if (f <= 0) return; const { per } = itemHours(it); ROLES.forEach((r) => (o[it.linea][r.id] += Math.round(per[r.id] * f))); }); return o; }, [items, week]);
-  const provByW = useMemo(() => { const o = {}; LINEAS.forEach((l) => (o[l] = { DC: 0, CP: 0, DA: 0, GR: 0, MM: 0 })); items.filter((i) => i.estado === "provisional").forEach((it) => { const f = weekFrac(it, week); if (f <= 0) return; const { per } = itemHours(it); ROLES.forEach((r) => (o[it.linea][r.id] += Math.round(per[r.id] * f))); }); return o; }, [items, week]);
-  const consAll = useMemo(() => { const w = {}; WEEKS.forEach((s) => { w[s] = {}; LINEAS.forEach((l) => (w[s][l] = { DC: 0, CP: 0, DA: 0, GR: 0, MM: 0 })); }); items.filter((i) => i.estado === "aceptado").forEach((it) => { const { per } = itemHours(it); WEEKS.forEach((s) => { const f = weekFrac(it, s); if (f <= 0) return; ROLES.forEach((r) => (w[s][it.linea][r.id] += Math.round(per[r.id] * f))); }); }); return w; }, [items]);
+  const consByW = useMemo(() => { const o = {}; LINEAS.forEach((l) => (o[l] = zeroRoles())); o["9Lab"] = zeroRoles(); items.filter((i) => i.estado === "aceptado").forEach((it) => { const f = weekFrac(it, week); if (f <= 0) return; const { per } = itemHours(it); ROLES.forEach((r) => (o[it.linea][r.id] += Math.round(per[r.id] * f))); if (it.lab) ROLES.forEach((r) => (o["9Lab"][r.id] += Math.round(per[r.id] * f))); }); return o; }, [items, week]);
+  const provByW = useMemo(() => { const o = {}; LINEAS.forEach((l) => (o[l] = zeroRoles())); o["9Lab"] = zeroRoles(); items.filter((i) => i.estado === "provisional").forEach((it) => { const f = weekFrac(it, week); if (f <= 0) return; const { per } = itemHours(it); ROLES.forEach((r) => (o[it.linea][r.id] += Math.round(per[r.id] * f))); if (it.lab) ROLES.forEach((r) => (o["9Lab"][r.id] += Math.round(per[r.id] * f))); }); return o; }, [items, week]);
+  const consAll = useMemo(() => { const w = {}; WEEKS.forEach((s) => { w[s] = {}; LINEAS.forEach((l) => (w[s][l] = zeroRoles())); w[s]["9Lab"] = zeroRoles(); }); items.filter((i) => i.estado === "aceptado").forEach((it) => { const { per } = itemHours(it); WEEKS.forEach((s) => { const f = weekFrac(it, s); if (f <= 0) return; ROLES.forEach((r) => (w[s][it.linea][r.id] += Math.round(per[r.id] * f))); if (it.lab) ROLES.forEach((r) => (w[s]["9Lab"][r.id] += Math.round(per[r.id] * f))); }); }); return w; }, [items]);
 
   const set = (id, patch) => setItems((p) => p.map((x) => (x.id === id ? { ...x, ...patch } : x)));
 
-  const confirmDecision = (it, action, sem) => {
+  const confirmDecision = (it, action, sem, seg) => {
     const fAire = iso(addDays(weekStart(sem), wdOf(it.fAire)));
     const reAcc = !!it.corId;
+    const segPatch = it.categoria === "Temporalidades" && seg ? { linea: seg } : {};
     const patch = action === "aceptar"
-      ? { estado: "aceptado", sem, fAire, weekPlan: null, weekLabels: null, dia: null, dayPlan: null, avance: reAcc ? it.avance : 5, ejecucion: reAcc ? (it.avance > 0 ? "proceso" : "sin_iniciar") : "sin_iniciar", corCli: it.corCli || newCor(), corId: it.corId || newCor(), corYear: it.corYear || COR_YEAR, reentry: false, log: reAcc ? [...(it.log || []), logEntry(me, `Reactivada en ${WEEKLBL[sem]} · misma tarea en COR`)] : it.log }
-      : { estado: "provisional", sem, fAire };
+      ? { estado: "aceptado", sem, fAire, ...segPatch, weekPlan: null, weekLabels: null, dia: null, dayPlan: null, avance: reAcc ? it.avance : 5, ejecucion: reAcc ? (it.avance > 0 ? "proceso" : "sin_iniciar") : "sin_iniciar", corCli: it.corCli || newCor(), corId: it.corId || newCor(), corYear: it.corYear || COR_YEAR, reentry: false, log: reAcc ? [...(it.log || []), logEntry(me, `Reactivada en ${WEEKLBL[sem]} · misma tarea en COR`)] : it.log }
+      : { estado: "provisional", sem, fAire, ...segPatch };
     if (action === "aceptar" && sem !== it.sem) setSavedHours((h) => h + itemHours(it).tot);
     set(it.id, patch); setDecision(null);
     const verb = action === "aceptar" ? (reAcc ? "reactivó" : "aceptó") : "dejó provisional";
     notify({ sev: "info", forAgency: true, forExec: it.ejecutivo, text: `${it.poCliente} ${verb} "${skuById(it.skuId).name} · ${it.campana}" en ${WEEKLBL[sem]}.` });
     fireToast(action === "aceptar" ? `${it.id} ${reAcc ? "reactivado" : "aceptado"} en ${WEEKLBL[sem]} · ${reAcc ? "misma tarea en COR" : "creado en COR"}` : `${it.id} provisional en ${WEEKLBL[sem]}`);
   };
-  const confirmSplit = (it, parts) => {
+  const confirmSplit = (it, parts, seg) => {
     const valid = parts.filter((p) => (Number(p.pct) || 0) > 0);
     const weekPlan = {}, weekLabels = {}; valid.forEach((p) => { weekPlan[p.sem] = (weekPlan[p.sem] || 0) + (Number(p.pct) || 0) / 100; if (p.label) weekLabels[p.sem] = p.label; });
     const weeks = Object.keys(weekPlan).map(Number).sort((a, b) => a - b);
     const primary = weeks[0] != null ? weeks[0] : it.sem;
     const single = weeks.length <= 1;
     const reAcc = !!it.corId;
-    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, estado: "aceptado", sem: primary, weekPlan: single ? null : weekPlan, weekLabels: single ? null : weekLabels, frac: 1, dia: null, dayPlan: null, fAire: iso(addDays(weekStart(primary), wdOf(it.fAire))), avance: reAcc ? it.avance : 5, ejecucion: reAcc ? (it.avance > 0 ? "proceso" : "sin_iniciar") : "sin_iniciar", corCli: it.corCli || newCor(), corId: it.corId || newCor(), corYear: it.corYear || COR_YEAR, reentry: false, log: reAcc ? [...(it.log || []), logEntry(me, single ? `Reactivada en ${WEEKLBL[primary]} · misma tarea en COR` : `Reactivada y repartida en ${weeks.length} semanas · misma tarea en COR`)] : it.log } : x)));
+    const segPatch = it.categoria === "Temporalidades" && seg ? { linea: seg } : {};
+    setItems((prev) => prev.map((x) => (x.id === it.id ? { ...x, estado: "aceptado", sem: primary, ...segPatch, weekPlan: single ? null : weekPlan, weekLabels: single ? null : weekLabels, frac: 1, dia: null, dayPlan: null, fAire: iso(addDays(weekStart(primary), wdOf(it.fAire))), avance: reAcc ? it.avance : 5, ejecucion: reAcc ? (it.avance > 0 ? "proceso" : "sin_iniciar") : "sin_iniciar", corCli: it.corCli || newCor(), corId: it.corId || newCor(), corYear: it.corYear || COR_YEAR, reentry: false, log: reAcc ? [...(it.log || []), logEntry(me, single ? `Reactivada en ${WEEKLBL[primary]} · misma tarea en COR` : `Reactivada y repartida en ${weeks.length} semanas · misma tarea en COR`)] : it.log } : x)));
     setDecision(null);
     fireToast(single ? `${it.id} ${reAcc ? "reactivado" : "aceptado"} en ${WEEKLBL[primary]} · ${reAcc ? "misma tarea en COR" : "creado en COR"}` : `${it.id} repartido en ${weeks.length} semanas · 1 sola tarea en COR`);
   };
@@ -595,6 +612,7 @@ function Main({ onExit }) {
   const setArchivedCamp = (ids, val) => { setItems((p) => p.map((x) => (ids.includes(x.id) ? { ...x, archivado: val } : x))); fireToast(val ? "Campaña archivada en el repositorio" : "Campaña restaurada"); };
   const me = audience === "agencia" ? actingExec : actingPO;
   const isDirector = me === "Director";
+  const isLab = audience === "agencia" && me === LAB_EXEC;
   const inScopePerson = (i) => isDirector || (audience === "agencia" ? i.ejecutivo === me : i.poCliente === me);
   const dueToday = items.filter((i) => i.estado === "aceptado" && i.sem === TODAY_WEEK && i.ejecucion !== "entregada" && (i.dia === TODAY_IDX || (i.dayPlan && i.dayPlan[TODAY_IDX] > 0) || (i.weekPlan && weekFrac(i, TODAY_WEEK) > 0)) && inScopePerson(i));
   const REASONS = CLOSE_REASONS;
@@ -612,8 +630,10 @@ function Main({ onExit }) {
   };
   const myLines = isDirector ? LINEAS : LINEAS.filter((l) => items.some((i) => (audience === "agencia" ? i.ejecutivo : i.poCliente) === me && i.linea === l));
   const dashDisabled = !isDirector && lineaView === "General";
-  useEffect(() => { if (dashDisabled && (view === "dashboard" || view === "semana")) setView("pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); }, [dashDisabled, view, audience]);
-  useEffect(() => { if (!isDirector && myLines.length) setLineaView(myLines[0]); }, [audience, actingExec, actingPO]);
+  useEffect(() => { if (dashDisabled && (view === "dashboard" || view === "semana") && !isLab) setView("pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); if (isLab && !["lab", "semana", "dashboard"].includes(view)) setView("lab"); }, [dashDisabled, view, audience, isLab]);
+  useEffect(() => { if (isLab) { setLineaView("9Lab"); return; } if (!isDirector && myLines.length) setLineaView(myLines[0]); }, [audience, actingExec, actingPO, isLab]);
+  const delegarLab = (it) => { set(it.id, { lab: true, delegBy: it.delegBy || it.ejecutivo, ejecutivo: LAB_EXEC, log: [...(it.log || []), logEntry(me, `Delegada a 9Lab (antes ${it.ejecutivo})`)] }); notify({ sev: "info", forAgency: true, text: `"${skuById(it.skuId).name} · ${it.campana}" delegada a 9Lab.` }); fireToast(`${it.id} delegada a 9Lab`); };
+  const devolverLab = (it) => { const back = it.delegBy || EJECUTIVOS[0]; set(it.id, { lab: false, ejecutivo: back, delegBy: null, log: [...(it.log || []), logEntry(me, `Devuelta de 9Lab a ${back}`)] }); fireToast(`${it.id} devuelta a ${back}`); };
   const myReqs = moveReqs.filter((r) => (audience === "agencia" ? isDirector || r.exec === actingExec : isDirector || r.affectedPO === actingPO));
   const myNotifs = notifs.filter((n) => (audience === "agencia" ? (isDirector ? n.forAgency || !!n.forExec : n.forExec === actingExec) : (isDirector ? n.forClientAll || !!n.forPO : n.forClientAll || n.forPO === actingPO)));
   const markNotifsRead = () => { const ids = new Set(myNotifs.map((n) => n.id)); setNotifs((p) => p.map((n) => (ids.has(n.id) ? { ...n, read: true } : n))); };
@@ -630,14 +650,14 @@ function Main({ onExit }) {
       set(it.id, { ejecucion: e, avance: e === "entregada" ? 100 : it.avance, archivado: e === "entregada" ? true : it.archivado }); if (e === "entregada") fireToast("Tarea finalizada y archivada en el repositorio");
     },
     onReactivar: (it) => setDecision({ item: it, action: "aceptar" }),
-    onCopy: copyLink, onOpenCor: openCor, onTime: setTimeFor, onArchive: setArchivedItem, onArchiveCamp: setArchivedCamp, onRetro: setRetroFor,
+    onCopy: copyLink, onOpenCor: openCor, onTime: setTimeFor, onArchive: setArchivedItem, onArchiveCamp: setArchivedCamp, onRetro: setRetroFor, onDelegar: delegarLab, onDevolver: devolverLab, isLab,
   };
 
   return (
     <div style={{ background: PAPER, color: INK, minHeight: 680 }} className="w-full">
       <div className="max-w-5xl mx-auto px-6 py-6">
-        <Header audience={audience} setAudience={setAudience} week={week} setWeek={setWeek} lineaView={lineaView} setLineaView={setLineaView} onExit={onExit} onConfig={() => setCfg(true)} notifs={myNotifs} reqs={myReqs} onApprove={(r) => approveReq(r, approverName)} onReject={(r) => rejectReq(r, approverName)} onReadNotifs={markNotifsRead} hideWeek={view === "solicitudes" || view === "aprobaciones"} actingPO={actingPO} setActingPO={setActingPO} actingExec={actingExec} setActingExec={setActingExec} isDirector={isDirector} showCap={showCap} setShowCap={setShowCap} myLines={myLines} view={view} setView={setView} dashDisabled={dashDisabled} />
-        {!(! isDirector && lineaView === "General") && (isDirector || showCap) && <CapStrip items={items} consByW={consByW} provByW={provByW} lineaView={lineaView} week={week} inLinea={inLinea} inWeek={inWeek} />}
+        <Header audience={audience} setAudience={setAudience} week={week} setWeek={setWeek} lineaView={lineaView} setLineaView={setLineaView} onExit={onExit} onConfig={() => setCfg(true)} notifs={myNotifs} reqs={myReqs} onApprove={(r) => approveReq(r, approverName)} onReject={(r) => rejectReq(r, approverName)} onReadNotifs={markNotifsRead} hideWeek={view === "solicitudes" || view === "aprobaciones"} actingPO={actingPO} setActingPO={setActingPO} actingExec={actingExec} setActingExec={setActingExec} isDirector={isDirector} isLab={isLab} showCap={showCap} setShowCap={setShowCap} myLines={myLines} view={view} setView={setView} dashDisabled={dashDisabled} />
+        {(isLab || (!(! isDirector && lineaView === "General") && (isDirector || showCap))) && <CapStrip items={items} consByW={consByW} provByW={provByW} lineaView={lineaView} week={week} inLinea={inLinea} inWeek={inWeek} />}
         <div className="flex items-center gap-2 mt-4" style={{ minHeight: 30 }}>
           {view === "solicitudes" || view === "aprobaciones" ? <span className="flex items-center gap-1.5 text-xs" style={{ color: "#a8a29e" }}><Files size={14} /> {view === "aprobaciones" ? "Aprobaciones · reingresos de todas las semanas" : "Solicitudes de todas las semanas"}</span> : <>
             <span className="flex items-center gap-1.5 text-xs flex-shrink-0" style={{ color: "#78716c" }}><CalendarDays size={14} /> Semana:</span>
@@ -655,12 +675,13 @@ function Main({ onExit }) {
           </>}
         </div>
         <div className="flex items-center gap-1 mt-4 mb-5 flex-wrap">
-          <NavBtn id="pedidos" icon={ClipboardList} label={audience === "cliente" ? "Tareas en tráfico" : "Tareas"} view={view} setView={setView} />
-          <NavBtn id="solicitudes" icon={Files} label={audience === "cliente" ? "Pendientes de ingreso" : "Solicitudes"} view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && (audience === "agencia" || !i.reentry) && inScopePerson(i)).length || null} />
+          {!isLab && <NavBtn id="pedidos" icon={ClipboardList} label={audience === "cliente" ? "Tareas en tráfico" : "Tareas"} view={view} setView={setView} />}
+          {!isLab && <NavBtn id="solicitudes" icon={Files} label={audience === "cliente" ? "Pendientes de ingreso" : "Solicitudes"} view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && (audience === "agencia" || !i.reentry) && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="aprobaciones" icon={RefreshCcw} label="Aprobaciones" view={view} setView={setView} badge={items.filter((i) => i.reentry && ["pausada", "revision", "provisional"].includes(i.estado) && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="prioridades" icon={ListOrdered} label="Priorizaciones" view={view} setView={setView} />}
+          {audience === "agencia" && <NavBtn id="lab" icon={UserPlus} label="9Lab" view={view} setView={setView} badge={items.filter((i) => i.lab && (isLab ? inScopePerson(i) : true)).length || null} />}
           {!dashDisabled && <NavBtn id="semana" icon={CalendarDays} label={audience === "cliente" ? "Planificación" : "Planificador"} view={view} setView={setView} />}
-          {audience === "agencia" && <NavBtn id="ingreso" icon={PlusCircle} label="Ingresar pedido" view={view} setView={setView} />}
+          {audience === "agencia" && !isLab && <NavBtn id="ingreso" icon={PlusCircle} label="Ingresar pedido" view={view} setView={setView} />}
           {audience === "agencia" && !isDirector && <div className="flex items-center gap-1.5 ml-auto">
             <button onClick={() => setCloseDay({ mandatory: false, tasks: dueToday })} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: dueToday.length ? "#fffbeb" : "#f0eee9", border: `1px solid ${dueToday.length ? "#fcd34d" : "#e7e5e4"}`, color: dueToday.length ? "#92400e" : "#78716c", fontWeight: 600 }}><ClipboardList size={13} /> Cierre del día{dueToday.length ? ` · ${dueToday.length}` : ""}</button>
             <button onClick={() => setCloseDay({ mandatory: true, tasks: dueToday })} title="Demo: simular que es la mañana siguiente y la jornada anterior no se cerró" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: INK, color: PAPER, fontWeight: 600 }}><Clock size={13} /> Simular nuevo día</button>
@@ -689,6 +710,7 @@ function Main({ onExit }) {
         {view === "pedidos" && <Pedidos {...pedidosProps} mode="tareas" />}
         {view === "solicitudes" && <Pedidos {...pedidosProps} mode="solicitudes" />}
         {view === "aprobaciones" && audience === "cliente" && <Pedidos {...pedidosProps} mode="aprobaciones" />}
+        {view === "lab" && audience === "agencia" && <Pedidos {...pedidosProps} mode="lab" />}
         {view === "prioridades" && audience === "cliente" && <Prioridades items={items} consAll={consAll} inWeek={inWeek} inLinea={inLinea} campOrder={campOrder} onMoveItem={moveItem} onMoveCamp={moveCamp} onSetPrio={setPrioridad} week={week} actingPO={actingPO} setActingPO={setActingPO} onAdvance={advanceItem} onRequest={requestAdvance} onDelay={delayItem} />}
         {view === "semana" && <SemanaView items={items} audience={audience} inLinea={inLinea} lineaView={lineaView} campOrder={campOrder} week={week} onOpenCor={openCor} onCopy={copyLink} onMoveDia={moveDia} onReset={resetDia} onOpenSplit={setSplitDays} onReplace={plannerReplace} />}
         {view === "ingreso" && audience === "agencia" && <Ingreso onAdd={addItems} week={week} actingExec={actingExec} isDirector={isDirector} lineaView={lineaView} campaigns={[...new Map(items.filter((it) => it.campana).map((it) => [it.campana, { name: it.campana, marca: it.marca, linea: it.linea, fAire: it.fAire }])).values()]} />}
@@ -707,7 +729,7 @@ function Main({ onExit }) {
   );
 }
 
-function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView, onExit, onConfig, notifs, reqs, onApprove, onReject, onReadNotifs, hideWeek, actingPO, setActingPO, actingExec, setActingExec, isDirector, showCap, setShowCap, myLines, view, setView, dashDisabled }) {
+function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView, onExit, onConfig, notifs, reqs, onApprove, onReject, onReadNotifs, hideWeek, actingPO, setActingPO, actingExec, setActingExec, isDirector, isLab, showCap, setShowCap, myLines, view, setView, dashDisabled }) {
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -721,12 +743,13 @@ function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView,
         </div>
       </div>
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><Layers size={14} /> Segmento:</span><select value={lineaView} onChange={(e) => setLineaView(e.target.value)} title={isDirector ? "El Director ve todos los segmentos o uno a la vez" : "Tus segmentos de negocio · uno a la vez o todos tus segmentos juntos"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600 }}>{isDirector ? <><option value="General">General (todos)</option>{LINEAS.map((l) => <option key={l}>{l}</option>)}</> : <>{myLines.length > 1 && <option value="General">Todos mis segmentos</option>}{myLines.map((l) => <option key={l}>{l}</option>)}</>}</select></div>
-        <div className="h-4" style={{ width: 1, background: "#d6d3d1" }} />
-        <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><User2 size={14} /> Ver como:</span><select value={audience === "agencia" ? actingExec : actingPO} onChange={(e) => (audience === "agencia" ? setActingExec(e.target.value) : setActingPO(e.target.value))} title={audience === "agencia" ? "Director ve todo · un ejecutivo ve solo sus proyectos" : "Director ve todo · un PO ve solo sus campañas"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600, color: BRAND }}>{["Director", ...(audience === "agencia" ? EJECUTIVOS : POS)].map((n) => <option key={n}>{n}</option>)}</select></div>
+        {!isLab && <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><Layers size={14} /> Segmento:</span><select value={lineaView} onChange={(e) => setLineaView(e.target.value)} title={isDirector ? "El Director ve todos los segmentos o uno a la vez" : "Tus segmentos de negocio · uno a la vez o todos tus segmentos juntos"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600 }}>{isDirector ? <><option value="General">General (todos)</option>{LINEAS.map((l) => <option key={l}>{l}</option>)}</> : <>{myLines.length > 1 && <option value="General">Todos mis segmentos</option>}{myLines.map((l) => <option key={l}>{l}</option>)}</>}</select></div>}
+        {isLab && <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={14} /> Agencia interna 9Lab · capacidad propia</span>}
+        {!isLab && <div className="h-4" style={{ width: 1, background: "#d6d3d1" }} />}
+        <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><User2 size={14} /> Ver como:</span><select value={audience === "agencia" ? actingExec : actingPO} onChange={(e) => (audience === "agencia" ? setActingExec(e.target.value) : setActingPO(e.target.value))} title={audience === "agencia" ? "Director ve todo · un ejecutivo ve sus proyectos · 9Lab solo lo delegado" : "Director ve todo · un PO ve solo sus campañas"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600, color: BRAND }}>{["Director", ...(audience === "agencia" ? [...EJECUTIVOS, LAB_EXEC] : POS)].map((n) => <option key={n}>{n}</option>)}</select></div>
         <div className="h-4" style={{ width: 1, background: "#d6d3d1" }} />
         <NavBtn id="dashboard" icon={Gauge} label="Dashboard" view={view} setView={setView} disabled={dashDisabled} title={dashDisabled ? "El Dashboard depende de la capacidad de un segmento · no disponible en 'Todos mis segmentos'" : undefined} />
-        {!isDirector && (lineaView === "General" ? <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: "#faf9f6", border: "1px solid #ece9e3", color: "#a8a29e", fontWeight: 600 }} title="La capacidad operativa no aplica al combinar varios segmentos"><Gauge size={14} /> Capacidad no disponible en vista combinada</span> : <button onClick={() => setShowCap((s) => !s)} className="flex items-center gap-2 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: showCap ? "#f0fdfa" : "#fff", border: `1px solid ${showCap ? "#bae6e0" : "#e7e5e4"}`, color: showCap ? "#115e59" : "#57534e", fontWeight: 600 }}><Gauge size={14} /> {showCap ? "Ocultar capacidad operativa" : "Ver capacidad operativa"} <ChevronDown size={13} style={{ transform: showCap ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></button>)}
+        {!isLab && !isDirector && (lineaView === "General" ? <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: "#faf9f6", border: "1px solid #ece9e3", color: "#a8a29e", fontWeight: 600 }} title="La capacidad operativa no aplica al combinar varios segmentos"><Gauge size={14} /> Capacidad no disponible en vista combinada</span> : <button onClick={() => setShowCap((s) => !s)} className="flex items-center gap-2 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: showCap ? "#f0fdfa" : "#fff", border: `1px solid ${showCap ? "#bae6e0" : "#e7e5e4"}`, color: showCap ? "#115e59" : "#57534e", fontWeight: 600 }}><Gauge size={14} /> {showCap ? "Ocultar capacidad operativa" : "Ver capacidad operativa"} <ChevronDown size={13} style={{ transform: showCap ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></button>)}
       </div>
     </div>
   );
@@ -864,8 +887,9 @@ function ReasonBubbleChart({ data }) {
 
 function Dashboard({ consByW, provByW, items, audience, lineaView, setLineaView, week, savedHours, inScopePerson, isDirector, me, showCap }) {
   const [mes, setMes] = useState("Todos");
+  const isLab = lineaView === "9Lab";
   const scope = lineaView === "General" ? LINEAS : [lineaView];
-  const inScope = (i) => scope.includes(i.linea) && weekFrac(i, week) > 0 && inScopePerson(i);
+  const inScope = (i) => (isLab ? !!i.lab : scope.includes(i.linea)) && weekFrac(i, week) > 0 && inScopePerson(i);
   const acc = items.filter((i) => i.estado === "aceptado" && inScope(i));
   const entregadas = acc.filter((i) => i.ejecucion === "entregada");
   const cumplimiento = acc.length ? Math.round((entregadas.length / acc.length) * 100) : null;
@@ -881,7 +905,7 @@ function Dashboard({ consByW, provByW, items, audience, lineaView, setLineaView,
 
   // ── Inteligencia operativa (todas las semanas dentro del scope) ──
   const todayIso = iso(TODAY), soonIso = iso(addDays(TODAY, 2));
-  const sItems = items.filter((i) => scope.includes(i.linea) && !i.archivado && inScopePerson(i));
+  const sItems = items.filter((i) => (isLab ? !!i.lab : scope.includes(i.linea)) && !i.archivado && inScopePerson(i));
   const prod = sItems.filter((i) => i.estado === "aceptado");
   const live = prod.filter((i) => i.ejecucion !== "entregada");
   const overdue = live.filter((i) => i.fAire < todayIso);
@@ -1056,7 +1080,7 @@ function Dashboard({ consByW, provByW, items, audience, lineaView, setLineaView,
       {(isDirector || showCap) && !(!isDirector && lineaView === "General") && (lineaView === "General" ? (
         <Card>
           <div className="flex items-center gap-2 mb-4"><Layers size={16} color={BRAND} /><span style={{ fontWeight: 600 }}>Capacidad por segmento de negocio</span><span className="text-xs ml-1" style={{ color: "#a8a29e" }}>· {WEEKLBL[week]}</span></div>
-          <div className="grid grid-cols-2 gap-3">{LINEAS.map((l) => { const c = ROLES.reduce((a, r) => a + consByW[l][r.id], 0), cp = Math.round(totalCapLinea(l) * cf), p = cp ? Math.round((c / cp) * 100) : 0, st = statusColor(p); return <button key={l} onClick={() => setLineaView(l)} className="rounded-xl p-4 text-left" style={{ background: "#faf9f6", border: "1px solid #ece9e3" }}><div className="flex items-center justify-between mb-2"><span className="text-sm" style={{ fontWeight: 600 }}>{l}</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: st.chip, color: st.text, fontWeight: 600 }}>{audience === "cliente" ? st.label : `${p}%`}</span></div><div className="rounded-full overflow-hidden" style={{ background: "#f0eee9", height: 8 }}><div style={{ width: Math.min(100, p) + "%", height: "100%", background: st.bar }} /></div>{audience === "agencia" && <div className="text-xs mt-1.5" style={{ color: "#a8a29e" }}>{c} / {cp} h · equipo propio</div>}</button>; })}</div>
+          <div className="grid grid-cols-2 gap-3">{(isLab ? ["9Lab"] : LINEAS).map((l) => { const c = ROLES.reduce((a, r) => a + consByW[l][r.id], 0), cp = Math.round(totalCapLinea(l) * cf), p = cp ? Math.round((c / cp) * 100) : 0, st = statusColor(p); return <button key={l} onClick={() => setLineaView(l)} className="rounded-xl p-4 text-left" style={{ background: "#faf9f6", border: "1px solid #ece9e3" }}><div className="flex items-center justify-between mb-2"><span className="text-sm" style={{ fontWeight: 600 }}>{l === "9Lab" ? "9Lab · capacidad propia" : l}</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: st.chip, color: st.text, fontWeight: 600 }}>{audience === "cliente" ? st.label : `${p}%`}</span></div><div className="rounded-full overflow-hidden" style={{ background: "#f0eee9", height: 8 }}><div style={{ width: Math.min(100, p) + "%", height: "100%", background: st.bar }} /></div>{audience === "agencia" && <div className="text-xs mt-1.5" style={{ color: "#a8a29e" }}>{c} / {cp} h · {l === "9Lab" ? "modular + externo" : "equipo propio"}</div>}</button>; })}</div>
         </Card>
       ) : (
         <Card>
@@ -1089,14 +1113,15 @@ function Dashboard({ consByW, provByW, items, audience, lineaView, setLineaView,
   );
 }
 
-function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, campOrder, lineaView, week, inScopePerson, isDirector, onAccept, onReject, onProvisional, onReactivar, onEdit, onDelete, onEjec, onCopy, onOpenCor, onTime, onArchive, onArchiveCamp, onRetro }) {
+function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, campOrder, lineaView, week, inScopePerson, isDirector, isLab, onAccept, onReject, onProvisional, onReactivar, onEdit, onDelete, onEjec, onCopy, onOpenCor, onTime, onArchive, onArchiveCamp, onRetro, onDelegar, onDevolver }) {
   const sol = mode === "solicitudes";
   const apr = mode === "aprobaciones";
+  const lab = mode === "lab";
   const solLike = sol || apr;
   const [fEje, setFEje] = useState("todos"); const [fCamp, setFCamp] = useState("todas"); const [fPo, setFPo] = useState("todos"); const [fEst, setFEst] = useState("todos"); const [fArch, setFArch] = useState("activas"); const [fWk, setFWk] = useState("todas"); const [fSort, setFSort] = useState("antiguas");
   const [open, setOpen] = useState({});
-  let list = items.filter(inLinea).filter(inScopePerson);
-  if (!solLike) list = list.filter(inWeek);
+  let list = lab ? items.filter((i) => i.lab) : items.filter(inLinea).filter(inScopePerson).filter((i) => !i.lab);
+  if (!solLike && !lab) list = list.filter(inWeek);
   if (apr) list = list.filter((i) => i.reentry && ["pausada", "revision", "provisional"].includes(i.estado));
   else if (sol) { if (audience === "cliente") list = list.filter((i) => !i.reentry && (i.estado === "revision" || i.estado === "provisional")); else list = list.filter((i) => i.estado === "revision" || i.estado === "provisional" || i.estado === "pausada" || i.estado === "borrador"); }
   else list = list.filter((i) => i.estado === "aceptado").filter((i) => (fArch === "archivadas" ? i.archivado : !i.archivado));
@@ -1123,8 +1148,8 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
         {solLike && <Sel value={fSort} set={setFSort} label="Orden" opts={[{ v: "antiguas", t: "Más antiguas primero" }, { v: "recientes", t: "Más recientes primero" }]} />}
         {sol && <Sel value={fEst} set={setFEst} label="Estado" opts={[{ v: "todos", t: "todos" }, { v: "revision", t: "En revisión" }, { v: "provisional", t: "Provisional" }, ...(audience === "agencia" ? [{ v: "pausada", t: "Pausadas" }] : [])]} />}
       </div>
-      <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#78716c" }}>{apr ? <><RefreshCcw size={13} color={BLUE} /> Reingresos: tareas que vuelven a tu aprobación (misma tarea en COR y tiempos ya registrados). Al aceptarlas o reactivarlas se vuelven a planificar.</> : sol ? <><Files size={13} color={BRAND} /> {audience === "cliente" ? "Pedidos nuevos por decidir" : "Solicitudes"} de todas las semanas, ordenadas por fecha al aire ({fSort === "antiguas" ? "más antiguas primero" : "más recientes primero"}). Al aceptarlas pasan a Tareas.</> : arch ? <><PackageCheck size={13} color="#92400e" /> Repositorio de tareas y campañas finalizadas. Puedes restaurarlas si hace falta.</> : <><ListOrdered size={13} color={BRAND} /> Tareas aceptadas, ordenadas por la prioridad que marcó el cliente.</>}</div>
-      {camps.length === 0 && <Card><div className="text-sm text-center" style={{ color: "#a8a29e" }}>{apr ? "Sin reingresos por aprobar." : sol ? "Sin pendientes en esta semana." : arch ? "Aún no hay nada archivado en esta semana." : "Sin tareas aceptadas en esta semana o filtro."}</div></Card>}
+      <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#78716c" }}>{lab ? <><UserPlus size={13} color={BLUE} /> Tareas delegadas a 9Lab (agencia interna). {isLab ? "Trabájalas con su COR de agencia; el cliente y sus costos no se ven aquí." : "El Director o el ejecutivo pueden devolverlas a su dueño original."}</> : apr ? <><RefreshCcw size={13} color={BLUE} /> Reingresos: tareas que vuelven a tu aprobación (misma tarea en COR y tiempos ya registrados). Al aceptarlas o reactivarlas se vuelven a planificar.</> : sol ? <><Files size={13} color={BRAND} /> {audience === "cliente" ? "Pedidos nuevos por decidir" : "Solicitudes"} de todas las semanas, ordenadas por fecha al aire ({fSort === "antiguas" ? "más antiguas primero" : "más recientes primero"}). Al aceptarlas pasan a Tareas.</> : arch ? <><PackageCheck size={13} color="#92400e" /> Repositorio de tareas y campañas finalizadas. Puedes restaurarlas si hace falta.</> : <><ListOrdered size={13} color={BRAND} /> Tareas aceptadas, ordenadas por la prioridad que marcó el cliente.</>}</div>
+      {camps.length === 0 && <Card><div className="text-sm text-center" style={{ color: "#a8a29e" }}>{lab ? "Sin tareas delegadas a 9Lab." : apr ? "Sin reingresos por aprobar." : sol ? "Sin pendientes en esta semana." : arch ? "Aún no hay nada archivado en esta semana." : "Sin tareas aceptadas en esta semana o filtro."}</div></Card>}
       <div className="space-y-3">
         {camps.map((camp) => {
           const group = list.filter((i) => i.campana === camp).sort((a, b) => (solLike ? (fSort === "antiguas" ? a.fAire.localeCompare(b.fAire) : b.fAire.localeCompare(a.fAire)) : a.prio - b.prio)), g0 = group[0];
@@ -1144,7 +1169,7 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
                   {prank >= 0 && !arch && <span className="rounded-md flex items-center justify-center" title="Prioridad del cliente" style={{ width: 22, height: 22, background: prank === 0 ? BRAND : "#f0eee9", color: prank === 0 ? "#fff" : "#57534e", fontWeight: 700, fontSize: 12 }}>{prank + 1}</span>}
                   <div>
                     <div className="flex items-center gap-2 flex-wrap"><Megaphone size={14} color={arch ? "#a8a29e" : BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e" }}>{group.length} entregables</span>{solLike ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#fffbeb", color: "#92400e", fontWeight: 600 }}>{reqH} h por decidir</span> : !arch && <span className="text-xs px-2 py-0.5 rounded-full" title={`Ocupa ${campWeekH} h · ${campPct}% de la capacidad ${lineaView === "General" ? "total" : "de " + g0.linea} en ${WEEKLBL[week]}`} style={{ background: cst.chip, color: cst.text, fontWeight: 600 }}>{campPct}% de la semana</span>}{arch && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "#fef3c7", color: "#92400e", fontWeight: 600 }}><Archive size={11} /> Archivada</span>}</div>
-                    <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: "#a8a29e" }}><span className="flex items-center gap-1"><Building2 size={11} /> {g0.marca}</span><span className="flex items-center gap-1"><CircleDot size={11} /> {g0.linea}</span>{audience === "cliente" && <span className="flex items-center gap-1"><User2 size={11} /> PO {g0.poCliente}</span>}</div>
+                    <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: "#a8a29e" }}><span className="flex items-center gap-1"><Building2 size={11} /> {g0.marca}</span><span className="flex items-center gap-1"><CircleDot size={11} /> {catOf(g0.campana)}</span><span className="flex items-center gap-1"><Layers size={11} /> {g0.linea}</span>{audience === "cliente" && <span className="flex items-center gap-1"><User2 size={11} /> PO {g0.poCliente}</span>}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1152,7 +1177,7 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
                   {!solLike && audience === "agencia" && !arch && allDone && <button onClick={(e) => { e.stopPropagation(); onArchiveCamp(group.map((i) => i.id), true); }} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: "#fef3c7", border: "1px solid #fcd34d", color: "#92400e", fontWeight: 600 }}><Archive size={13} /> Archivar campaña</button>}
                 </div>
               </div>
-              {isOpen && <div>{group.map((it, idx) => <ItemRow key={it.id} it={it} idx={idx} rank={idx + 1} audience={audience} arch={arch} showWeek={solLike} onAccept={onAccept} onReject={onReject} onProvisional={onProvisional} onReactivar={onReactivar} onEdit={onEdit} onDelete={onDelete} onEjec={onEjec} onCopy={onCopy} onOpenCor={onOpenCor} onTime={onTime} onArchive={onArchive} onRetro={onRetro} />)}</div>}
+              {isOpen && <div>{group.map((it, idx) => <ItemRow key={it.id} it={it} idx={idx} rank={idx + 1} audience={audience} arch={arch} showWeek={solLike || lab} isLab={isLab} labView={lab} onAccept={onAccept} onReject={onReject} onProvisional={onProvisional} onReactivar={onReactivar} onEdit={onEdit} onDelete={onDelete} onEjec={onEjec} onCopy={onCopy} onOpenCor={onOpenCor} onTime={onTime} onArchive={onArchive} onRetro={onRetro} onDelegar={onDelegar} onDevolver={onDevolver} />)}</div>}
             </Card>
           );
         })}
@@ -1160,7 +1185,7 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
     </div>
   );
 }
-function ItemRow({ it, idx, rank, audience, arch, showWeek, onAccept, onReject, onProvisional, onReactivar, onEdit, onDelete, onEjec, onCopy, onOpenCor, onTime, onArchive, onRetro }) {
+function ItemRow({ it, idx, rank, audience, arch, showWeek, isLab, labView, onAccept, onReject, onProvisional, onReactivar, onEdit, onDelete, onEjec, onCopy, onOpenCor, onTime, onArchive, onRetro, onDelegar, onDevolver }) {
   const sku = skuById(it.skuId), et = etById(it.etiqueta), { per, tot } = itemHours(it), es = ESTADO[it.estado], ej = it.ejecucion ? EJEC[it.ejecucion] : null;
   const breakdown = ROLES.filter((r) => per[r.id] > 0).map((r) => `${r.name}: ${per[r.id]} h`).join("   ·   ");
   const sugTot = suggestedHours(it).tot, asgTot = it.assignedHours ? ROLES.reduce((a, r) => a + (it.assignedHours[r.id] || 0), 0) : sugTot, over = sugTot ? asgTot / sugTot : 1;
@@ -1177,6 +1202,7 @@ function ItemRow({ it, idx, rank, audience, arch, showWeek, onAccept, onReject, 
           {ej && it.estado !== "pausada" && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: ej.c + "1e", color: ej.c, fontWeight: 600 }}><ej.icon size={11} /> {ej.label}</span>}
           {it.delayed && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title={it.delayInfo ? `Reprogramada del ${it.delayInfo.from} al ${it.delayInfo.to} · ${it.delayInfo.comment || ""}` : "Reprogramada con retraso"} style={{ background: "#fef2f2", color: "#9f1239", fontWeight: 600 }}><Clock size={10} /> Retraso{it.delayInfo ? ` → ${it.delayInfo.to}` : ""}</span>}
           {it.reentry && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title="Reingreso · misma tarea en COR, tiempos ya registrados. Al aceptarla se vuelve a planificar." style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><RefreshCcw size={10} /> Reingreso</span>}
+          {it.lab && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title={it.delegBy ? `Delegada a 9Lab por ${it.delegBy}` : "Delegada a 9Lab"} style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={10} /> 9Lab{it.delegBy ? ` · de ${it.delegBy.split(" ")[0]}` : ""}</span>}
         </div>
         <div className="flex items-center gap-3 mt-0.5 text-xs flex-wrap" style={{ color: "#a8a29e" }}>
           <span className="flex items-center gap-1"><Calendar size={11} /> aire {fmt(it.fAire)}</span>
@@ -1185,6 +1211,8 @@ function ItemRow({ it, idx, rank, audience, arch, showWeek, onAccept, onReject, 
           <span className="flex items-center gap-1">{tot} h{audience === "agencia" && <span title={(it.assignedHours ? "Tiempo asignado · " : "Tiempo sugerido · ") + breakdown} style={{ cursor: "help", display: "inline-flex" }}><Clock size={11} color={it.assignedHours ? tcol.c : "#c4c0b8"} /></span>}</span>
           {it.corId && (audience === "cliente"
             ? <span className="flex items-center gap-1"><button onClick={() => onOpenCor(it, "cliente")} className="px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: "#eef2ff", color: BLUE, fontWeight: 600 }}>{it.corCli} <ExternalLink size={11} /></button><button onClick={() => onCopy(it.corCli)} title="Copiar link" style={{ color: BLUE }}><Copy size={12} /></button></span>
+            : isLab
+            ? <span className="flex items-center gap-1"><button onClick={() => onOpenCor(it, "agencia")} title="Abrir ficha del proyecto AGENCIA" className="px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: "#eef2ff", color: BLUE, fontWeight: 600 }}><span style={{ fontSize: 9, opacity: .7, fontWeight: 700 }}>AGENCIA</span> {it.corId} <ExternalLink size={10} /></button><button onClick={() => onCopy(it.corId)} title="Copiar link AGENCIA" style={{ color: BLUE }}><Copy size={11} /></button></span>
             : <span className="flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><button onClick={() => onOpenCor(it, "cliente")} title="Abrir ficha del proyecto CLIENTE" className="px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: "#eef2ff", color: BLUE, fontWeight: 600 }}><span style={{ fontSize: 9, opacity: .7, fontWeight: 700 }}>CLIENTE</span> {it.corCli} <ExternalLink size={10} /></button><button onClick={() => onCopy(it.corCli)} title="Copiar link CLIENTE" style={{ color: BLUE }}><Copy size={11} /></button></span><span className="flex items-center gap-1"><button onClick={() => onOpenCor(it, "agencia")} title="Abrir ficha del proyecto AGENCIA" className="px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: "#eef2ff", color: BLUE, fontWeight: 600 }}><span style={{ fontSize: 9, opacity: .7, fontWeight: 700 }}>AGENCIA</span> {it.corId} <ExternalLink size={10} /></button><button onClick={() => onCopy(it.corId)} title="Copiar link AGENCIA" style={{ color: BLUE }}><Copy size={11} /></button></span></span>)}
         </div>
         {it.estado === "pausada" && <div className="text-xs mt-1 flex items-center gap-1" style={{ color: "#b45309" }}><Pause size={11} /> La agencia suspendió esta tarea · {audience === "cliente" ? "reactívala para que vuelva a planificarse." : "esperando que el cliente la reactive."}</div>}
@@ -1193,7 +1221,7 @@ function ItemRow({ it, idx, rank, audience, arch, showWeek, onAccept, onReject, 
         {it.estado === "aceptado" && <div className="flex items-center gap-2"><div className="rounded-full overflow-hidden" style={{ width: 60, height: 7, background: "#f0eee9" }}><div style={{ width: it.avance + "%", height: "100%", background: BRAND }} /></div><span className="text-xs" style={{ color: "#57534e", fontWeight: 600 }}>{it.avance}%</span>{audience === "agencia" && !arch && <select value={it.ejecucion || "sin_iniciar"} onChange={(e) => onEjec(it, e.target.value)} style={{ ...dateInput, padding: "3px 6px", fontSize: 11 }}>{EJEC_ORDER.map((k) => <option key={k} value={k}>{EJEC[k].label}</option>)}</select>}</div>}
         {audience === "agencia" && arch && <button onClick={() => onArchive(it, false)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: "#f0fdfa", border: "1px solid #bae6e0", color: "#115e59", fontWeight: 600 }}><ArchiveRestore size={13} /> Restaurar</button>}
         {audience === "agencia" && !arch && it.ejecucion === "entregada" && <button onClick={() => onArchive(it, true)} title="Enviar al repositorio" className="rounded-full flex items-center justify-center" style={{ width: 30, height: 30, background: "#fef3c7", color: "#92400e" }}><Archive size={14} /></button>}
-        {audience === "agencia" && !arch && it.estado !== "rechazado" && <>{it.estado === "aceptado" && <button onClick={() => onRetro(it)} title="Crear retrabajo / incidencia (se envía a COR)" className="rounded-full flex items-center justify-center" style={{ width: 30, height: 30, background: (it.retrabajos || []).length ? "#eef2ff" : "#f5f5f4", color: BLUE, position: "relative" }}><RefreshCcw size={14} />{(it.retrabajos || []).length > 0 && <span style={{ position: "absolute", top: -3, right: -3, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 7, background: BLUE, color: "#fff", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{it.retrabajos.length}</span>}</button>}<button onClick={() => onTime(it)} title={tcol.lab} className="rounded-full flex items-center justify-center" style={{ width: 30, height: 30, background: tcol.bg, color: tcol.c }}><SlidersHorizontal size={14} /></button><IconBtn icon={Pencil} onClick={() => onEdit(it)} /><IconBtn icon={Trash2} onClick={() => onDelete(it)} danger /></>}
+        {audience === "agencia" && !arch && it.estado !== "rechazado" && <>{it.estado === "aceptado" && <button onClick={() => onRetro(it)} title="Crear retrabajo / incidencia (se envía a COR)" className="rounded-full flex items-center justify-center" style={{ width: 30, height: 30, background: (it.retrabajos || []).length ? "#eef2ff" : "#f5f5f4", color: BLUE, position: "relative" }}><RefreshCcw size={14} />{(it.retrabajos || []).length > 0 && <span style={{ position: "absolute", top: -3, right: -3, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 7, background: BLUE, color: "#fff", fontSize: 9, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{it.retrabajos.length}</span>}</button>}<button onClick={() => onTime(it)} title={tcol.lab} className="rounded-full flex items-center justify-center" style={{ width: 30, height: 30, background: tcol.bg, color: tcol.c }}><SlidersHorizontal size={14} /></button>{!isLab && <IconBtn icon={Pencil} onClick={() => onEdit(it)} />}{!isLab && <IconBtn icon={Trash2} onClick={() => onDelete(it)} danger />}{!isLab && !labView && it.estado === "aceptado" && !it.lab && <button onClick={() => onDelegar(it)} title="Delegar a 9Lab (cambia de dueño al Ejecutivo 9Lab)" className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><Send size={12} /> 9Lab</button>}{!isLab && labView && it.lab && <button onClick={() => onDevolver(it)} title={`Devolver a ${it.delegBy || "su dueño"}`} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: "#f5f5f4", color: "#57534e", fontWeight: 600 }}><ArrowLeft size={12} /> Devolver</button>}</>}
         {audience === "cliente" && it.estado === "revision" && <><button onClick={() => onProvisional(it)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: "#dbeafe", color: "#1e40af", fontWeight: 600 }}><Clock size={12} /> Provisional</button><button onClick={() => onReject(it)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: "#f5f5f4", color: "#57534e", fontWeight: 600 }}><X size={12} /> Rechazar</button><button onClick={() => onAccept(it)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><Check size={12} /> Aceptar</button></>}
         {audience === "cliente" && it.estado === "provisional" && <button onClick={() => onAccept(it)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><Check size={12} /> Confirmar</button>}
         {audience === "cliente" && it.estado === "pausada" && <button onClick={() => onReactivar(it)} title="Reactivar · vuelve a planificarse" className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><Play size={12} /> Reactivar</button>}
@@ -1679,32 +1707,32 @@ function Ingreso({ onAdd, week, actingExec, isDirector, lineaView, campaigns = [
   const defLinea = !isDirector && lineaView && LINEAS.includes(lineaView) ? lineaView : LINEAS[0];
   const [mode, setMode] = useState(null); const [step, setStep] = useState("camp");
   const [aiText, setAiText] = useState(""); const [aiLoading, setAiLoading] = useState(false); const [aiError, setAiError] = useState("");
-  const [head, setHead] = useState({ marca: MARCAS[0], linea: defLinea, campana: "", campanaNueva: false, ejecutivo: defOwner, cliente: CLIENTES[0], producto: PRODUCTOS[0], division: DIVISIONES[0], fInicio: iso(TODAY), fFin: iso(addDays(TODAY, 21)), fAire: iso(addDays(TODAY, 21)) });
+  const [head, setHead] = useState({ marca: MARCAS[0], categoria: "Marcas", linea: defLinea, campana: "", campanaNueva: false, ejecutivo: defOwner, cliente: CLIENTES[0], producto: PRODUCTOS[0], division: DIVISIONES[0], fInicio: iso(TODAY), fFin: iso(addDays(TODAY, 21)), fAire: iso(addDays(TODAY, 21)) });
   const [plantilla, setPlantilla] = useState(""); const [draft, setDraft] = useState({ sem: week, skuId: "post", etiqueta: skuById("post").cx, cantidad: 1, poCliente: POS[0] });
   const [lista, setLista] = useState([]); const [brief, setBrief] = useState("");
   const [editTime, setEditTime] = useState(null);
   const saveTime = (i, map) => { setLista((p) => p.map((l, j) => (j === i ? { ...l, assignedHours: map } : l))); setEditTime(null); };
   const setH = (k, v) => setHead((s) => ({ ...s, [k]: v }));
   const setLine = (i, k, v) => setLista((p) => p.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
-  const pickCampaign = (name) => { const c = campaigns.find((x) => x.name === name); setHead((s) => ({ ...s, campana: name, ...(c ? { marca: c.marca, linea: c.linea, fAire: c.fAire, fFin: c.fAire } : {}) })); };
+  const pickCampaign = (name) => { const c = campaigns.find((x) => x.name === name); const cc = catOf(name); setHead((s) => ({ ...s, campana: name, categoria: cc, ...(c ? { marca: c.marca, fAire: c.fAire, fFin: c.fAire } : {}), linea: segFor(cc, c ? c.marca : s.marca) })); };
   const addLinea = () => setLista((p) => [...p, { ...draft, cantidad: Number(draft.cantidad) || 1 }]);
   const rmLinea = (i) => setLista((p) => p.filter((_, j) => j !== i));
   const applyPlantilla = (id) => { setPlantilla(id); const t = PLANTILLAS.find((x) => x.id === id); if (t) setLista(t.items.map(([skuId, etiqueta, cantidad]) => ({ skuId, etiqueta, cantidad, sem: week, poCliente: POS[0] }))); };
-  const submit = (asDraft) => { if (!lista.length) return; onAdd(lista.map((l) => ({ ...head, ...l, brief, campana: head.campana || "Sin campaña", fAire: head.fFin || head.fAire })), asDraft); };
+  const submit = (asDraft) => { if (!lista.length) return; const cc = head.campanaNueva ? head.categoria : catOf(head.campana); const seg = segFor(cc, head.marca); onAdd(lista.map((l) => ({ ...head, ...l, categoria: cc, linea: seg, brief, campana: head.campana || "Sin campaña", fAire: head.fFin || head.fAire })), asDraft); };
   const goFromCamp = () => setStep(head.campanaNueva ? "new" : "tasks");
   async function runAI() {
     setAiLoading(true); setAiError("");
     const prompt = `Estructura un pedido de tráfico de agencia. Devuelve SOLO JSON válido, sin markdown.
-marca ∈ ${JSON.stringify(MARCAS)}; linea ∈ ${JSON.stringify(LINEAS)}; ejecutivo ∈ ${JSON.stringify(EJECUTIVOS)}; poCliente ∈ ${JSON.stringify(POS)}.
+marca ∈ ${JSON.stringify(MARCAS)}; categoria ∈ ${JSON.stringify(CATEGORIAS)}; ejecutivo ∈ ${JSON.stringify(EJECUTIVOS)}; poCliente ∈ ${JSON.stringify(POS)}.
 entregables.sku usa nombre exacto de ${JSON.stringify(SKUS.map((s) => s.name))}; etiqueta ∈ ["simple","media","alta"]. fAire YYYY-MM-DD (hoy ${iso(TODAY)}).
-Esquema: {"marca","linea","campana","ejecutivo","poCliente","fAire","entregables":[{"sku","etiqueta","cantidad"}]}
+Esquema: {"marca","categoria","campana","ejecutivo","poCliente","fAire","entregables":[{"sku","etiqueta","cantidad"}]}
 Pedido: """${aiText}"""`;
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }) });
       const data = await res.json();
       const txt = data.content.filter((b) => b.type === "text").map((b) => b.text).join("").replace(/```json|```/g, "").trim();
       const j = JSON.parse(txt);
-      setHead((s) => ({ ...s, marca: MARCAS.includes(j.marca) ? j.marca : s.marca, linea: LINEAS.includes(j.linea) ? j.linea : s.linea, campana: j.campana || s.campana, campanaNueva: !CAMPANAS.includes(j.campana), ejecutivo: isDirector && EJECUTIVOS.includes(j.ejecutivo) ? j.ejecutivo : s.ejecutivo, fFin: /^\d{4}-\d{2}-\d{2}$/.test(j.fAire) ? j.fAire : s.fFin, fAire: /^\d{4}-\d{2}-\d{2}$/.test(j.fAire) ? j.fAire : s.fAire }));
+      setHead((s) => ({ ...s, marca: MARCAS.includes(j.marca) ? j.marca : s.marca, categoria: CATEGORIAS.includes(j.categoria) ? j.categoria : s.categoria, campana: j.campana || s.campana, campanaNueva: !CAMPANAS.includes(j.campana), ejecutivo: isDirector && EJECUTIVOS.includes(j.ejecutivo) ? j.ejecutivo : s.ejecutivo, fFin: /^\d{4}-\d{2}-\d{2}$/.test(j.fAire) ? j.fAire : s.fFin, fAire: /^\d{4}-\d{2}-\d{2}$/.test(j.fAire) ? j.fAire : s.fAire }));
       const po = POS.includes(j.poCliente) ? j.poCliente : POS[0];
       setLista((j.entregables || []).map((e) => { const sku = SKUS.find((s) => s.name.toLowerCase() === String(e.sku).toLowerCase()) || SKUS.find((s) => s.name.toLowerCase().includes(String(e.sku).toLowerCase())) || SKUS[0]; return { skuId: sku.id, etiqueta: ["simple", "media", "alta"].includes(e.etiqueta) ? e.etiqueta : "media", cantidad: Number(e.cantidad) || 1, sem: week, poCliente: po }; }));
       setMode("manual"); setStep("camp");
@@ -1747,7 +1775,7 @@ Pedido: """${aiText}"""`;
               <button onClick={() => { setH("campanaNueva", !head.campanaNueva); setH("campana", ""); }} className="text-xs mt-1" style={{ color: BRAND, fontWeight: 600 }}>{head.campanaNueva ? "← elegir una existente" : "+ crear campaña nueva"}</button>
             </Field>
           </div>
-          {!head.campanaNueva && head.campana && <div className="text-xs mt-3 rounded-lg px-3 py-2" style={{ background: "#f0fdfa", color: "#115e59" }}>Campaña existente · Marca {head.marca} · {head.linea} · al aire {fmt(head.fAire)}. Pasas directo a las tareas.</div>}
+          {!head.campanaNueva && head.campana && <div className="text-xs mt-3 rounded-lg px-3 py-2" style={{ background: "#f0fdfa", color: "#115e59" }}>Campaña existente · Marca {head.marca} · {head.categoria}{head.categoria === "Temporalidades" ? " · segmento se define al aceptar" : ` · Segmento ${segFor(head.categoria, head.marca)}`} · al aire {fmt(head.fAire)}. Pasas directo a las tareas.</div>}
           <button onClick={goFromCamp} disabled={!(head.campanaNueva || head.campana.trim())} className="mt-5 flex items-center gap-2 rounded-full px-5 py-3 text-sm" style={{ background: head.campanaNueva || head.campana.trim() ? INK : "#d6d3d1", color: PAPER, fontWeight: 600 }}>Siguiente <ArrowRight size={16} /></button>
         </div>
       )}
@@ -1758,6 +1786,7 @@ Pedido: """${aiText}"""`;
             <Field label="Nombre de la campaña / proyecto"><input style={inp} placeholder="Ej: Verano 360" value={head.campana} onChange={(e) => setH("campana", e.target.value)} /></Field>
             <Field label="Cliente"><select style={inp} value={head.cliente} onChange={(e) => setH("cliente", e.target.value)}>{CLIENTES.map((c) => <option key={c}>{c}</option>)}</select></Field>
             <Field label="Marca"><select style={inp} value={head.marca} onChange={(e) => setH("marca", e.target.value)}>{MARCAS.map((m) => <option key={m}>{m}</option>)}</select></Field>
+            <Field label="Categoría"><select style={inp} value={head.categoria} onChange={(e) => setH("categoria", e.target.value)}>{CATEGORIAS.map((c) => <option key={c}>{c}</option>)}</select>{head.categoria === "Marcas" ? <div className="text-xs mt-1" style={{ color: "#a8a29e" }}>Segmento por marca → <b>{segFor("Marcas", head.marca)}</b></div> : head.categoria === "Temporalidades" ? <div className="text-xs mt-1" style={{ color: "#a8a29e" }}>El segmento (DC1/DC2) lo elige el cliente al aceptar</div> : <div className="text-xs mt-1" style={{ color: "#a8a29e" }}>Segmento fijo → <b>{segFor(head.categoria, head.marca)}</b></div>}</Field>
             <Field label="Producto"><select style={inp} value={head.producto} onChange={(e) => setH("producto", e.target.value)}>{PRODUCTOS.map((p) => <option key={p}>{p}</option>)}</select></Field>
             <Field label="División"><select style={inp} value={head.division} onChange={(e) => setH("division", e.target.value)}>{DIVISIONES.map((d) => <option key={d}>{d}</option>)}</select></Field>
             <Field label="Plantilla de tareas (opcional)"><select style={inp} value={plantilla} onChange={(e) => applyPlantilla(e.target.value)}><option value="">Sin plantilla</option>{PLANTILLAS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
@@ -1804,7 +1833,9 @@ function DecisionModal({ decision, consAll, onClose, onConfirm, onSplit }) {
   const [sem, setSem] = useState(item.sem);
   const [tab, setTab] = useState("single");
   const { per, tot } = itemHours(item);
-  const linea = item.linea, cap = totalCapLinea(linea);
+  const isTemp = item.categoria === "Temporalidades";
+  const [seg, setSeg] = useState(LINEAS.includes(item.linea) ? item.linea : "DC1");
+  const linea = isTemp ? seg : item.linea, cap = totalCapLinea(linea);
   const info = (s) => {
     const c = consAll[s][linea], cf = capFactor(s), capS = cap * cf;
     const projTot = ROLES.reduce((a, r) => a + c[r.id] + (accept ? per[r.id] : 0), 0);
@@ -1838,7 +1869,7 @@ function DecisionModal({ decision, consAll, onClose, onConfirm, onSplit }) {
   const suggestSplit = () => setParts(computeSuggestion());
   const rmPart = (i) => setParts((p) => (p.length > 2 ? p.filter((_, j) => j !== i) : p));
   const sumPct = parts.reduce((a, p) => a + (Number(p.pct) || 0), 0);
-  const weekAdds = {}; parts.forEach((p) => { const f = (Number(p.pct) || 0) / 100; weekAdds[p.sem] = weekAdds[p.sem] || { DC: 0, CP: 0, DA: 0, GR: 0, MM: 0 }; ROLES.forEach((r) => (weekAdds[p.sem][r.id] += per[r.id] * f)); });
+  const weekAdds = {}; parts.forEach((p) => { const f = (Number(p.pct) || 0) / 100; weekAdds[p.sem] = weekAdds[p.sem] || zeroRoles(); ROLES.forEach((r) => (weekAdds[p.sem][r.id] += per[r.id] * f)); });
   let splitHard = false; Object.keys(weekAdds).forEach((s) => ROLES.forEach((r) => { const proj = consAll[s][linea][r.id] + weekAdds[s][r.id], cp = CAP[linea][r.id] * capFactor(Number(s)); if (proj > STRESS * cp) splitHard = true; }));
   const splitValid = sumPct === 100 && !splitHard;
   const weekHard = (s) => ROLES.some((r) => consAll[s][linea][r.id] + (weekAdds[s] ? weekAdds[s][r.id] : 0) > STRESS * CAP[linea][r.id] * capFactor(s));
@@ -1849,6 +1880,12 @@ function DecisionModal({ decision, consAll, onClose, onConfirm, onSplit }) {
       <div className="rounded-2xl p-6 w-full" style={{ background: "#fff", maxWidth: 520 }}>
         <div className="flex items-center gap-3 mb-3"><div className="rounded-full flex items-center justify-center" style={{ width: 40, height: 40, background: blocked ? "#fee2e2" : !accept ? "#dbeafe" : tab === "split" ? "#ecfeff" : cur.rows.length ? "#fef3c7" : "#ccfbf1" }}>{blocked ? <X size={20} color="#be123c" /> : !accept ? <Clock size={20} color="#1d4ed8" /> : tab === "split" ? <Scissors size={20} color="#0f766e" /> : cur.rows.length ? <AlertTriangle size={20} color="#b45309" /> : <Check size={20} color={BRAND} />}</div><div style={{ ...serif, fontSize: 20, fontWeight: 700 }}>{title}</div></div>
         <p className="text-sm mb-4" style={{ color: "#57534e" }}><b>{skuById(item.skuId).name} ×{item.cantidad}</b> · {item.campana} · {linea} · <b>{tot} h</b></p>
+        {isTemp && accept && (
+          <div className="rounded-xl px-3 py-2.5 mb-4" style={{ background: "#faf9f6", border: "1px solid #e7e5e4" }}>
+            <div className="text-xs mb-2 flex items-center gap-1.5" style={{ color: "#78716c", fontWeight: 600 }}><Layers size={13} color={BRAND} /> Temporalidad · ¿a qué tráfico entra?</div>
+            <div className="flex items-center gap-1 rounded-full p-1" style={{ background: "#f0eee9", width: "fit-content" }}>{LINEAS.map((l) => <button key={l} onClick={() => setSeg(l)} className="px-3 py-1 rounded-full text-xs" style={{ background: seg === l ? "#fff" : "transparent", fontWeight: 600, color: seg === l ? INK : "#78716c" }}>{l}</button>)}</div>
+          </div>
+        )}
         {accept && (
           <div className="flex items-center gap-1 mb-4 rounded-full p-1" style={{ background: "#f0eee9", width: "fit-content" }}>
             <button onClick={() => setTab("single")} className="px-3 py-1 rounded-full text-xs flex items-center gap-1" style={{ background: tab === "single" ? "#fff" : "transparent", fontWeight: 600, color: INK }}><CalendarDays size={12} /> Una semana</button>
@@ -1893,8 +1930,8 @@ function DecisionModal({ decision, consAll, onClose, onConfirm, onSplit }) {
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 rounded-full py-2.5 text-sm" style={{ background: "#e7e5e4", color: INK, fontWeight: 600 }}>Cancelar</button>
           {accept && tab === "split"
-            ? <button onClick={() => onSplit(item, parts.map((p) => ({ ...p, pct: Number(p.pct) || 0 })))} disabled={!splitValid} className="flex-1 rounded-full py-2.5 text-sm" style={{ background: splitValid ? BRAND : "#d6d3d1", color: "#fff", fontWeight: 600 }}>Aceptar dividido</button>
-            : <button onClick={() => onConfirm(item, action, sem)} disabled={blocked} className="flex-1 rounded-full py-2.5 text-sm" style={{ background: blocked ? "#d6d3d1" : !accept ? "#1d4ed8" : cur.rows.length ? "#b45309" : BRAND, color: "#fff", fontWeight: 600 }}>{!accept ? "Marcar provisional" : cur.rows.length ? "Aceptar igual" : "Confirmar"}</button>}
+            ? <button onClick={() => onSplit(item, parts.map((p) => ({ ...p, pct: Number(p.pct) || 0 })), isTemp ? seg : undefined)} disabled={!splitValid} className="flex-1 rounded-full py-2.5 text-sm" style={{ background: splitValid ? BRAND : "#d6d3d1", color: "#fff", fontWeight: 600 }}>Aceptar dividido</button>
+            : <button onClick={() => onConfirm(item, action, sem, isTemp ? seg : undefined)} disabled={blocked} className="flex-1 rounded-full py-2.5 text-sm" style={{ background: blocked ? "#d6d3d1" : !accept ? "#1d4ed8" : cur.rows.length ? "#b45309" : BRAND, color: "#fff", fontWeight: 600 }}>{!accept ? "Marcar provisional" : cur.rows.length ? "Aceptar igual" : "Confirmar"}</button>}
         </div>
       </div>
     </div>
