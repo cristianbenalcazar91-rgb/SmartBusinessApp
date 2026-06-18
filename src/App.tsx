@@ -1520,12 +1520,14 @@ function ItemRow({ it, idx, rank, audience, arch, showWeek, isLab, labView, onAc
           {ej && it.estado !== "pausada" && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: ej.c + "1e", color: ej.c, fontWeight: 600 }}><ej.icon size={11} /> {ej.label}</span>}
           {it.delayed && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title={it.delayInfo ? `Reprogramada del ${it.delayInfo.from} al ${it.delayInfo.to} · ${it.delayInfo.comment || ""}` : "Reprogramada con retraso"} style={{ background: "#fef2f2", color: "#9f1239", fontWeight: 600 }}><Clock size={10} /> Retraso{it.delayInfo ? ` → ${it.delayInfo.to}` : ""}</span>}
           {it.reentry && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title="Reingreso · misma tarea en COR, tiempos ya registrados. Al aceptarla se vuelve a planificar." style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><RefreshCcw size={10} /> Reingreso</span>}
-          {it.lab && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title={it.delegBy ? `Delegada a 9Lab por ${it.delegBy}` : "Delegada a 9Lab"} style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={10} /> 9Lab{it.delegBy ? ` · de ${it.delegBy.split(" ")[0]}` : ""}</span>}
+          {it.lab && !labView && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title={it.delegBy ? `Delegada a 9Lab por ${it.delegBy}` : "Delegada a 9Lab"} style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={10} /> 9Lab{it.delegBy ? ` · de ${it.delegBy.split(" ")[0]}` : ""}</span>}
         </div>
         <div className="flex items-center gap-2.5 mt-1 flex-wrap" style={{ color: "#a8a29e", fontSize: 11 }}>
           <span className="flex items-center gap-1"><Calendar size={11} /> aire {fmt(it.fAire)}</span>
           {showWeek && <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e", fontWeight: 600 }}><CalendarDays size={10} /> {it.weekPlan ? `${planWeeks(it).length} sem` : WEEKLBL[it.sem]}</span>}
-          {audience === "agencia" && <span className="flex items-center gap-1"><User2 size={11} /> Ej. {it.ejecutivo}</span>}
+          {audience === "agencia" && (labView && it.lab
+            ? <span className="flex items-center gap-1" title={`Delegada por ${it.delegBy || "su dueño"}`}><UserPlus size={11} color={BLUE} /> de {it.delegBy || it.ejecutivo}</span>
+            : <span className="flex items-center gap-1"><User2 size={11} /> Ej. {it.ejecutivo}</span>)}
           <span className="flex items-center gap-1"><Building2 size={11} /> PO {it.poCliente}</span>
           <span className="flex items-center gap-1">{tot} h{audience === "agencia" && <span title={(it.assignedHours ? "Tiempo asignado · " : "Tiempo sugerido · ") + breakdown} style={{ cursor: "help", display: "inline-flex" }}><Clock size={11} color={it.assignedHours ? tcol.c : "#c4c0b8"} /></span>}</span>
           {it.corId && (audience === "cliente"
