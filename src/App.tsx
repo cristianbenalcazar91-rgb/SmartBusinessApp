@@ -434,6 +434,33 @@ const dateInput = { background: "#fff", border: "1px solid #e7e5e4", borderRadiu
 
 const TODAY_WEEK = 0; // la semana actual del prototipo
 const TODAY_IDX = wdOf(iso(TODAY)); // día actual dentro de la semana (0=Lun … 4=Vie)
+// Riesgo de fecha al aire y salud de campaña
+const airWeek = (it) => Math.round((new Date(it.fAire + "T00:00:00") - MONDAY) / 6048e5); // 6048e5 = 7 días en ms
+const planSpan = (it) => { const ws = planWeeks(it); return { start: Math.min(...ws), end: Math.max(...ws) }; };
+function taskRisk(it) {
+  if (it.archivado || it.ejecucion === "entregada") return "ok";
+  if (it.estado !== "aceptado") return "none";
+  const aw = airWeek(it), pe = planSpan(it).end;
+  if (pe > aw || aw < TODAY_WEEK) return "late";          // el plan cruza / ya pasó la fecha al aire
+  if (aw === TODAY_WEEK || (it.retrabajos || []).length) return "risk";
+  return "ok";
+}
+const HEALTH = {
+  ok: { key: "ok", label: "En regla", bar: BRAND, chip: "#ccfbf1", text: "#115e59" },
+  risk: { key: "risk", label: "En riesgo", bar: "#d97706", chip: "#fef3c7", text: "#92400e" },
+  late: { key: "late", label: "Atrasada", bar: "#be123c", chip: "#fee2e2", text: "#9f1239" },
+};
+function campHealth(tasks) { const act = tasks.filter((t) => !t.archivado); if (!act.length) return HEALTH.ok; const r = act.map(taskRisk); if (r.includes("late")) return HEALTH.late; if (r.includes("risk")) return HEALTH.risk; return HEALTH.ok; }
+// Tareas personales del ejecutivo (no van a COR, no consumen capacidad)
+const PERSONAL_SEED = [
+  { id: "PT1", owner: "M. Salazar", title: "Status semanal con cliente DIS", date: iso(TODAY), done: false, prio: "alta" },
+  { id: "PT2", owner: "M. Salazar", title: "Revisar brief de nueva campaña Verano", date: iso(addDays(TODAY, 1)), done: false, prio: "media" },
+  { id: "PT3", owner: "M. Salazar", title: "Enviar reporte de cierre de mes", date: iso(addDays(TODAY, 2)), done: false, prio: "media" },
+  { id: "PT4", owner: "M. Salazar", title: "Coordinar sesión de fotos con producción", date: iso(addDays(TODAY, -1)), done: true, prio: "baja" },
+  { id: "PT5", owner: "J. Andrade", title: "Llamada de feedback con PO", date: iso(TODAY), done: false, prio: "alta" },
+];
+let _pt = 100;
+const newPtId = () => `PT${++_pt}`;
 const SAVED_BASE = 132; // horas extra evitadas acumuladas del mes (ilustrativo)
 const MESES_TREND = ["Marzo", "Abril", "Mayo", "Junio"];
 const MONTH_TREND = { Marzo: [68, 74, 71, 79], Abril: [81, 88, 92, 85], Mayo: [90, 97, 86, 93], Junio: [78, 84, 0, 0] };
@@ -455,7 +482,7 @@ function Login({ onEnter }) {
 export default function App() { const [a, setA] = useState(false); return a ? <Main onExit={() => setA(false)} /> : <Login onEnter={() => setA(true)} />; }
 
 function Main({ onExit }) {
-  const [view, setView] = useState("dashboard");
+  const [view, setView] = useState("miSemana");
   const [audience, setAudience] = useState("agencia");
   const [week, setWeek] = useState(0);
   const [closeDay, setCloseDay] = useState(null);
@@ -482,6 +509,10 @@ function Main({ onExit }) {
   const [notifs, setNotifs] = useState([]);
   const notify = (o) => setNotifs((p) => [{ id: `N-${Math.random().toString(36).slice(2, 7)}`, at: moveStamp(), read: false, sev: "info", forAgency: false, forExec: null, forClientAll: false, forPO: null, ...o }, ...p].slice(0, 40));
   const [savedHours, setSavedHours] = useState(SAVED_BASE);
+  const [ptasks, setPtasks] = useState(PERSONAL_SEED);
+  const addPtask = (title, date, prio) => { if (!title || !title.trim()) return; setPtasks((p) => [...p, { id: newPtId(), owner: me, title: title.trim(), date: date || iso(TODAY), done: false, prio: prio || "media" }]); };
+  const togglePtask = (id) => setPtasks((p) => p.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  const removePtask = (id) => setPtasks((p) => p.filter((t) => t.id !== id));
   const fireToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
   const inWeek = (it) => weekFrac(it, week) > 0;
@@ -630,7 +661,7 @@ function Main({ onExit }) {
   };
   const myLines = isDirector ? LINEAS : LINEAS.filter((l) => items.some((i) => (audience === "agencia" ? i.ejecutivo : i.poCliente) === me && i.linea === l));
   const dashDisabled = !isDirector && lineaView === "General";
-  useEffect(() => { if (dashDisabled && (view === "dashboard" || view === "semana") && !isLab) setView("pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); if (isLab && !["lab", "semana", "dashboard"].includes(view)) setView("lab"); }, [dashDisabled, view, audience, isLab]);
+  useEffect(() => { if (dashDisabled && (view === "dashboard" || view === "semana") && !isLab) setView("pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); if (audience === "cliente" && view === "miSemana") setView("pedidos"); if (isLab && !["lab", "semana", "dashboard", "miSemana", "retro"].includes(view)) setView("lab"); }, [dashDisabled, view, audience, isLab]);
   useEffect(() => { if (isLab) { setLineaView("9Lab"); return; } if (!isDirector && myLines.length) setLineaView(myLines[0]); }, [audience, actingExec, actingPO, isLab]);
   const delegarLab = (it) => { set(it.id, { lab: true, delegBy: it.delegBy || it.ejecutivo, ejecutivo: LAB_EXEC, log: [...(it.log || []), logEntry(me, `Delegada a 9Lab (antes ${it.ejecutivo})`)] }); notify({ sev: "info", forAgency: true, text: `"${skuById(it.skuId).name} · ${it.campana}" delegada a 9Lab.` }); fireToast(`${it.id} delegada a 9Lab`); };
   const devolverLab = (it) => { const back = it.delegBy || EJECUTIVOS[0]; set(it.id, { lab: false, ejecutivo: back, delegBy: null, log: [...(it.log || []), logEntry(me, `Devuelta de 9Lab a ${back}`)] }); fireToast(`${it.id} devuelta a ${back}`); };
@@ -675,12 +706,14 @@ function Main({ onExit }) {
           </>}
         </div>
         <div className="flex items-center gap-1 mt-4 mb-5 flex-wrap">
+          {audience === "agencia" && <NavBtn id="miSemana" icon={Sparkles} label="Mi semana" view={view} setView={setView} />}
           {!isLab && <NavBtn id="pedidos" icon={ClipboardList} label={audience === "cliente" ? "Tareas en tráfico" : "Tareas"} view={view} setView={setView} />}
           {!isLab && <NavBtn id="solicitudes" icon={Files} label={audience === "cliente" ? "Pendientes de ingreso" : "Solicitudes"} view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && (audience === "agencia" || !i.reentry) && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="aprobaciones" icon={RefreshCcw} label="Aprobaciones" view={view} setView={setView} badge={items.filter((i) => i.reentry && ["pausada", "revision", "provisional"].includes(i.estado) && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="prioridades" icon={ListOrdered} label="Priorizaciones" view={view} setView={setView} />}
           {audience === "agencia" && <NavBtn id="lab" icon={UserPlus} label="9Lab" view={view} setView={setView} badge={items.filter((i) => i.lab && (isLab ? inScopePerson(i) : true)).length || null} />}
           {!dashDisabled && <NavBtn id="semana" icon={CalendarDays} label={audience === "cliente" ? "Planificación" : "Planificador"} view={view} setView={setView} />}
+          <NavBtn id="retro" icon={Megaphone} label="Retroplanning" view={view} setView={setView} />
           {audience === "agencia" && !isLab && <NavBtn id="ingreso" icon={PlusCircle} label="Ingresar pedido" view={view} setView={setView} />}
           {audience === "agencia" && !isDirector && <div className="flex items-center gap-1.5 ml-auto">
             <button onClick={() => setCloseDay({ mandatory: false, tasks: dueToday })} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: dueToday.length ? "#fffbeb" : "#f0eee9", border: `1px solid ${dueToday.length ? "#fcd34d" : "#e7e5e4"}`, color: dueToday.length ? "#92400e" : "#78716c", fontWeight: 600 }}><ClipboardList size={13} /> Cierre del día{dueToday.length ? ` · ${dueToday.length}` : ""}</button>
@@ -706,6 +739,8 @@ function Main({ onExit }) {
           </Card>
         )}
 
+        {view === "miSemana" && audience === "agencia" && <MiSemana items={items} ptasks={ptasks} onAddPtask={addPtask} onTogglePtask={togglePtask} onRemovePtask={removePtask} me={me} isDirector={isDirector} isLab={isLab} inScopePerson={inScopePerson} setView={setView} onOpenCor={openCor} />}
+        {view === "retro" && <Retro items={items} inLinea={inLinea} inScopePerson={inScopePerson} audience={audience} setView={setView} />}
         {view === "dashboard" && <Dashboard consByW={consByW} provByW={provByW} items={items} audience={audience} lineaView={lineaView} setLineaView={setLineaView} week={week} savedHours={savedHours} inScopePerson={inScopePerson} isDirector={isDirector} me={me} showCap={showCap} />}
         {view === "pedidos" && <Pedidos {...pedidosProps} mode="tareas" />}
         {view === "solicitudes" && <Pedidos {...pedidosProps} mode="solicitudes" />}
@@ -882,6 +917,167 @@ function ReasonBubbleChart({ data }) {
         </g>
       ); })}
     </svg>
+  );
+}
+
+function Retro({ items, inLinea, inScopePerson, audience, setView }) {
+  const [span, setSpan] = useState(4);
+  const [fromW, setFromW] = useState(Math.max(MINWEEK, TODAY_WEEK - 1));
+  const [showSol, setShowSol] = useState(true);
+  const toW = Math.min(MAXWEEK, fromW + span - 1);
+  const days = []; for (let w = fromW; w <= toW; w++) for (let di = 0; di < 5; di++) days.push({ w, di, date: weekDays(w)[di] });
+  const N = days.length;
+  const absOf = (w, di) => (w - fromW) * 5 + di;
+  const clamp = (x) => Math.max(0, Math.min(N - 1, x));
+  const todayAbs = TODAY_WEEK >= fromW && TODAY_WEEK <= toW ? absOf(TODAY_WEEK, TODAY_IDX) : -1;
+  const dayPlanIdx = (it) => { if (it.dayPlan) return Object.keys(it.dayPlan).map(Number).filter((d) => it.dayPlan[d] > 0); if (it.dia != null) return [it.dia]; return null; };
+  const isSol = (i) => i.estado === "revision" || i.estado === "provisional";
+  const startW = (it) => (it.weekPlan ? Math.min(...planWeeks(it)) : it.sem);
+  const endW = (it) => (it.weekPlan ? Math.max(...planWeeks(it)) : it.sem);
+  const startDi = (it) => { if (it.weekPlan) return 0; const dp = dayPlanIdx(it); return dp ? Math.min(...dp) : 0; };
+  const endDi = (it) => { if (it.weekPlan) return 4; const dp = dayPlanIdx(it); return dp ? Math.max(...dp) : 0; };
+  const scoped = items.filter((i) => !i.archivado && inLinea(i) && inScopePerson(i) && (i.estado === "aceptado" || (showSol && isSol(i))));
+  const overlaps = (it) => { const aw = airWeek(it); const lo = Math.min(startW(it), aw), hi = Math.max(endW(it), aw); return hi >= fromW && lo <= toW; };
+  const visible = scoped.filter(overlaps);
+  const camps = [...new Set(visible.map((i) => i.campana))].sort((a, b) => { const da = visible.filter((i) => i.campana === a).reduce((m, i) => (i.fAire < m ? i.fAire : m), "9999"); const db = visible.filter((i) => i.campana === b).reduce((m, i) => (i.fAire < m ? i.fAire : m), "9999"); return da.localeCompare(db); });
+  const tpl = `200px repeat(${N}, minmax(30px, 1fr))`;
+  const SOL_BG = "repeating-linear-gradient(45deg,#bfdbfe,#bfdbfe 3px,#eff6ff 3px,#eff6ff 6px)";
+  const Dot = ({ c, dash }) => <span style={{ width: 12, height: 12, borderRadius: 3, background: dash ? SOL_BG : c, border: dash ? "1px dashed #1d4ed8" : "none", display: "inline-block" }} />;
+  const winLbl = `${weekStart(fromW).getDate()} ${MONTHS[weekStart(fromW).getMonth()]} – ${addDays(weekStart(toW), 4).getDate()} ${MONTHS[addDays(weekStart(toW), 4).getMonth()]}`;
+  const ctrlBtn = { background: "#fff", border: "1px solid #e7e5e4", color: "#57534e", fontWeight: 600 };
+  return (
+    <div>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div style={{ ...serif, fontSize: 24, fontWeight: 700, color: INK }}>Retroplanning</div>
+        <button onClick={() => { if (typeof window !== "undefined") window.print(); }} title="Genera un PDF para compartir con el cliente (sin costos). En el navegador: Guardar como PDF." className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={ctrlBtn}><PackageCheck size={13} /> Exportar / Imprimir (PDF)</button>
+      </div>
+      <p className="text-sm mb-3" style={{ color: "#78716c" }}>Cada entregable va desde su <b>ingreso al tráfico</b> hasta su <b>fecha al aire</b>; si reprogramas la tarea, su inicio se mueve. Las barras que <b style={{ color: "#9f1239" }}>cruzan la fecha al aire</b> salen en rojo. Mueve la ventana para ver más adelante.</p>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <button onClick={() => setFromW(Math.max(MINWEEK, fromW - 2))} title="Atrás" className="rounded-full flex items-center justify-center" style={{ width: 32, height: 32, ...ctrlBtn }}><ChevronRight size={16} style={{ transform: "rotate(180deg)" }} /></button>
+        <span className="text-sm px-3 py-1.5 rounded-full" style={{ background: "#faf9f6", border: "1px solid #ece9e3", color: INK, fontWeight: 600 }}>{winLbl}</span>
+        <button onClick={() => setFromW(Math.min(MAXWEEK - 1, fromW + 2))} title="Adelante" className="rounded-full flex items-center justify-center" style={{ width: 32, height: 32, ...ctrlBtn }}><ChevronRight size={16} /></button>
+        <button onClick={() => setFromW(Math.max(MINWEEK, TODAY_WEEK - 1))} className="text-xs px-3 py-1.5 rounded-full" style={ctrlBtn}>Hoy</button>
+        <div className="flex items-center gap-1 ml-1">{[4, 8, 12].map((sv) => <button key={sv} onClick={() => setSpan(sv)} className="text-xs px-2.5 py-1.5 rounded-full" style={{ background: span === sv ? INK : "#fff", border: "1px solid " + (span === sv ? INK : "#e7e5e4"), color: span === sv ? PAPER : "#57534e", fontWeight: 600 }}>{sv} sem</button>)}</div>
+        <button onClick={() => setShowSol(!showSol)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1 ml-auto" style={{ background: showSol ? "#eff6ff" : "#fff", border: "1px solid " + (showSol ? "#bfdbfe" : "#e7e5e4"), color: showSol ? "#1e40af" : "#57534e", fontWeight: 600 }}><Files size={13} /> {showSol ? "Ocultar solicitudes" : "Ver solicitudes"}</button>
+      </div>
+      <div className="flex items-center gap-4 mb-4 flex-wrap text-xs" style={{ color: "#57534e" }}>
+        <span className="flex items-center gap-1.5"><Dot c={HEALTH.ok.bar} /> En regla</span>
+        <span className="flex items-center gap-1.5"><Dot c={HEALTH.risk.bar} /> En riesgo</span>
+        <span className="flex items-center gap-1.5"><Dot c={HEALTH.late.bar} /> Cruza la fecha al aire</span>
+        <span className="flex items-center gap-1.5"><Dot c="#34d399" /> Finalizada</span>
+        <span className="flex items-center gap-1.5"><Dot dash /> Solicitud (por aprobar)</span>
+        <span className="flex items-center gap-1.5"><span style={{ width: 12, height: 12, borderRadius: 3, outline: `2px solid ${INK}`, outlineOffset: -2, display: "inline-block" }} /> Día de la fecha al aire</span>
+      </div>
+      {camps.length === 0 && <Card><div className="text-sm text-center" style={{ color: "#a8a29e" }}>No hay entregables en esta ventana. Mueve las fechas o amplía las semanas.</div></Card>}
+      <div className="flex flex-col gap-4">
+        {camps.map((camp) => {
+          const g = visible.filter((i) => i.campana === camp).sort((a, b) => a.fAire.localeCompare(b.fAire));
+          const g0 = g[0], appr = g.filter((i) => !isSol(i)), ch = campHealth(appr.length ? appr : g), lateN = appr.filter((it) => taskRisk(it) === "late").length;
+          return (
+            <Card key={camp} style={{ padding: 0, overflow: "hidden" }}>
+              <div className="px-4 py-2.5 flex items-center gap-2 flex-wrap" style={{ borderBottom: "1px solid #f0eee9" }}>
+                <Megaphone size={15} color={BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span>
+                <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: ch.chip, color: ch.text, fontWeight: 600 }}><CircleDot size={10} /> {ch.label}</span>
+                <span className="text-xs" style={{ color: "#a8a29e" }}>{g0.marca} · {catOf(camp)} · {g0.linea} · {g.length} entregables</span>
+                {lateN > 0 && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ml-auto" style={{ background: "#fee2e2", color: "#9f1239", fontWeight: 600 }}><AlertTriangle size={11} /> {lateN} cruzan la fecha al aire · visto bueno cliente</span>}
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <div style={{ minWidth: 200 + N * 30 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: tpl, alignItems: "stretch", borderBottom: "1px solid #f7f5f1", background: "#faf9f6" }}>
+                    <div className="px-3 py-1.5 text-xs" style={{ color: "#a8a29e", fontWeight: 600 }}>Entregable</div>
+                    {days.map((d, k) => <div key={k} className="text-center" style={{ padding: "4px 0", borderLeft: d.di === 0 ? "1px solid #ece9e3" : "none", background: k === todayAbs ? "#f0fdfa" : "transparent" }}><div style={{ fontSize: 9, color: k === todayAbs ? BRAND : "#a8a29e", fontWeight: k === todayAbs ? 700 : 500 }}>{DAYS[d.di][0]}</div><div style={{ fontSize: 11, color: k === todayAbs ? BRAND : "#78716c", fontWeight: k === todayAbs ? 700 : 500 }}>{d.date.getDate()}</div>{d.di === 0 && <div style={{ fontSize: 8, color: "#c4c0b8" }}>{MONTHS[d.date.getMonth()]}</div>}</div>)}
+                  </div>
+                  {g.map((it) => {
+                    const aw = airWeek(it), airAbs = clamp(absOf(aw, wdOf(it.fAire)));
+                    const sAbs = clamp(absOf(startW(it), startDi(it))), eAbs = clamp(absOf(endW(it), endDi(it)));
+                    const bs = Math.min(sAbs, airAbs), be = Math.max(eAbs, airAbs);
+                    const done = it.ejecucion === "entregada", solq = isSol(it);
+                    const col = done ? "#34d399" : (HEALTH[taskRisk(it)] || HEALTH.ok).bar;
+                    return (
+                      <div key={it.id} style={{ display: "grid", gridTemplateColumns: tpl, alignItems: "center", borderTop: "1px solid #f7f5f1" }}>
+                        <div className="px-3 py-1.5" style={{ minWidth: 0 }}><div className="text-xs truncate" style={{ fontWeight: 600, color: INK }}>{skuById(it.skuId).name} <span style={{ color: "#a8a29e", fontWeight: 400 }}>×{it.cantidad}</span></div><div className="text-xs truncate" style={{ color: "#a8a29e" }}>al aire {fmt(it.fAire)}{it.lab ? " · 9Lab" : ""}{solq ? " · " : ""}{solq && <span style={{ color: "#1e40af", fontWeight: 600 }}>por aprobar</span>}</div></div>
+                        {days.map((d, k) => { const on = k >= bs && k <= be, isAir = k === airAbs; return <div key={k} style={{ padding: "0 1px", borderLeft: d.di === 0 ? "1px solid #f0eee9" : "none", background: k === todayAbs ? "#f0fdfa" : "transparent" }}><div title={isAir ? `Fecha al aire: ${fmt(it.fAire)}` : undefined} style={{ height: 18, background: on ? (solq ? SOL_BG : col) : "transparent", borderTopLeftRadius: k === bs ? 5 : 0, borderBottomLeftRadius: k === bs ? 5 : 0, borderTopRightRadius: k === be ? 5 : 0, borderBottomRightRadius: k === be ? 5 : 0, borderTop: on && solq ? "1px dashed #1d4ed8" : "none", borderBottom: on && solq ? "1px dashed #1d4ed8" : "none", outline: isAir ? `2px solid ${INK}` : "none", outlineOffset: -2 }} /></div>; })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me, isDirector, isLab, inScopePerson, setView, onOpenCor }) {
+  const mine = items.filter((i) => !i.archivado && inScopePerson(i));
+  const riesgo = mine.filter((i) => i.estado === "aceptado" && ["late", "risk"].includes(taskRisk(i))).sort((a, b) => a.fAire.localeCompare(b.fAire));
+  const vence = mine.filter((i) => i.estado === "aceptado" && i.ejecucion !== "entregada" && weekFrac(i, TODAY_WEEK) > 0).sort((a, b) => a.fAire.localeCompare(b.fAire));
+  const espera = mine.filter((i) => ["revision", "provisional"].includes(i.estado));
+  const deleg = items.filter((i) => i.lab && !i.archivado && (isDirector || i.delegBy === me));
+  const myPt = ptasks.filter((t) => t.owner === me).sort((a, b) => Number(a.done) - Number(b.done) || a.date.localeCompare(b.date));
+  const [nt, setNt] = useState(""); const [nd, setNd] = useState(iso(TODAY));
+  const today = weekDays(TODAY_WEEK)[TODAY_IDX];
+  const Row = ({ it }) => { const r = HEALTH[taskRisk(it)] || HEALTH.ok; return (
+    <button onClick={() => onOpenCor(it, "agencia")} className="w-full text-left px-3 py-2 rounded-lg flex items-center justify-between gap-2" style={{ background: "#faf9f6", border: "1px solid #f0eee9" }}>
+      <div style={{ minWidth: 0 }}><div className="text-sm truncate" style={{ fontWeight: 600, color: INK }}>{skuById(it.skuId).name} <span style={{ color: "#a8a29e", fontWeight: 400 }}>×{it.cantidad}</span></div><div className="text-xs truncate" style={{ color: "#a8a29e" }}>{it.campana} · {it.marca} · {it.linea}{it.lab ? " · 9Lab" : ""}</div></div>
+      <span className="text-xs flex items-center gap-1" style={{ color: r.text, fontWeight: 600, whiteSpace: "nowrap" }}><CircleDot size={10} /> {fmt(it.fAire)}</span>
+    </button>
+  ); };
+  const KPI = ({ n, label, color, bg, target }) => <button onClick={() => target && setView(target)} className="rounded-2xl px-4 py-3 text-left flex-1" style={{ background: bg, border: "1px solid #ece9e3", minWidth: 140 }}><div style={{ ...serif, fontSize: 26, fontWeight: 700, color }}>{n}</div><div className="text-xs mt-0.5" style={{ color: "#78716c", fontWeight: 600 }}>{label}</div></button>;
+  const ListCard = ({ icon: Icon, color, title, arr, emptyText, target }) => (
+    <Card style={{ padding: 0 }}>
+      <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid #f0eee9" }}>
+        <span className="flex items-center gap-2 text-sm" style={{ fontWeight: 700, color: INK }}><Icon size={15} color={color} /> {title}</span>
+        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e", fontWeight: 700 }}>{arr.length}</span>
+      </div>
+      <div className="p-3 flex flex-col gap-1.5">
+        {arr.length === 0 ? <div className="text-xs text-center py-4" style={{ color: "#a8a29e" }}>{emptyText}</div> : arr.slice(0, 6).map((it) => <Row key={it.id} it={it} />)}
+        {arr.length > 6 && target && <button onClick={() => setView(target)} className="text-xs mt-1 self-start" style={{ color: BLUE, fontWeight: 600 }}>Ver los {arr.length} →</button>}
+      </div>
+    </Card>
+  );
+  return (
+    <div>
+      <div className="flex items-end justify-between flex-wrap gap-2 mb-1"><div style={{ ...serif, fontSize: 24, fontWeight: 700, color: INK }}>Mi semana</div><div className="text-xs" style={{ color: "#a8a29e" }}>{isLab ? "Agencia interna 9Lab" : me} · {DAYS[TODAY_IDX]} {today.getDate()} {MONTHS[today.getMonth()]}</div></div>
+      <p className="text-sm mb-4" style={{ color: "#78716c" }}>Tu centro de control: lo urgente, lo que vence, lo que espera al cliente y tus pendientes.</p>
+      <div className="flex items-stretch gap-3 mb-4 flex-wrap">
+        <KPI n={riesgo.length} label="En riesgo de fecha al aire" color="#9f1239" bg="#fff5f5" target="retro" />
+        <KPI n={vence.length} label="Vence esta semana" color="#92400e" bg="#fffbeb" target="semana" />
+        <KPI n={espera.length} label="Espera al cliente" color="#1e40af" bg="#eff6ff" target="solicitudes" />
+        <KPI n={myPt.filter((t) => !t.done).length} label="Mis pendientes" color={INK} bg="#faf9f6" />
+      </div>
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+        <ListCard icon={AlertTriangle} color="#be123c" title="En riesgo de fecha al aire" arr={riesgo} emptyText="Nada en riesgo. Vas al día." target="retro" />
+        <ListCard icon={Clock} color="#d97706" title="Vence esta semana" arr={vence} emptyText="Sin entregas esta semana." target="semana" />
+        {!isLab && <ListCard icon={RefreshCcw} color={BLUE} title="Espera decisión del cliente" arr={espera} emptyText="Nada esperando al cliente." target="solicitudes" />}
+        <ListCard icon={UserPlus} color={BLUE} title={isLab ? "Mis tareas 9Lab" : "Delegado a 9Lab"} arr={deleg} emptyText="Sin tareas en 9Lab." target="lab" />
+      </div>
+      <Card style={{ padding: 0, marginTop: 16 }}>
+        <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid #f0eee9" }}>
+          <span className="flex items-center gap-2 text-sm" style={{ fontWeight: 700, color: INK }}><Sparkles size={15} color={BRAND} /> Mis pendientes <span className="text-xs" style={{ color: "#a8a29e", fontWeight: 400 }}>(notas y tareas internas · no van a COR)</span></span>
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e", fontWeight: 700 }}>{myPt.filter((t) => !t.done).length} abiertas</span>
+        </div>
+        <div className="p-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <input value={nt} onChange={(e) => setNt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { onAddPtask(nt, nd); setNt(""); } }} placeholder="Nueva tarea personal…" style={{ ...dateInput, flex: 1, minWidth: 180, padding: "7px 10px" }} />
+            <input type="date" value={nd} onChange={(e) => setNd(e.target.value)} style={{ ...dateInput, padding: "7px 10px" }} />
+            <button onClick={() => { onAddPtask(nt, nd); setNt(""); }} className="text-xs px-3 py-2 rounded-full flex items-center gap-1" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><Check size={13} /> Agregar</button>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {myPt.length === 0 ? <div className="text-xs text-center py-3" style={{ color: "#a8a29e" }}>Sin pendientes. Agrega el primero arriba.</div> : myPt.map((t) => (
+              <div key={t.id} className="px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: t.done ? "#f7f5f1" : "#faf9f6", border: "1px solid #f0eee9" }}>
+                <button onClick={() => onTogglePtask(t.id)} className="rounded flex items-center justify-center" style={{ width: 20, height: 20, flexShrink: 0, background: t.done ? BRAND : "#fff", border: `1px solid ${t.done ? BRAND : "#d6d3d1"}` }}>{t.done && <Check size={13} color="#fff" />}</button>
+                <div className="flex-1" style={{ minWidth: 0 }}><span className="text-sm" style={{ color: t.done ? "#a8a29e" : INK, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span></div>
+                <span className="text-xs" style={{ color: "#a8a29e", whiteSpace: "nowrap" }}>{fmt(t.date)}</span>
+                <button onClick={() => onRemovePtask(t.id)} className="rounded flex items-center justify-center" style={{ width: 24, height: 24, color: "#c4c0b8" }}><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -1168,7 +1364,7 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
                   {isOpen ? <ChevronDown size={16} color="#a8a29e" /> : <ChevronRight size={16} color="#a8a29e" />}
                   {prank >= 0 && !arch && <span className="rounded-md flex items-center justify-center" title="Prioridad del cliente" style={{ width: 22, height: 22, background: prank === 0 ? BRAND : "#f0eee9", color: prank === 0 ? "#fff" : "#57534e", fontWeight: 700, fontSize: 12 }}>{prank + 1}</span>}
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap"><Megaphone size={14} color={arch ? "#a8a29e" : BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e" }}>{group.length} entregables</span>{solLike ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#fffbeb", color: "#92400e", fontWeight: 600 }}>{reqH} h por decidir</span> : !arch && <span className="text-xs px-2 py-0.5 rounded-full" title={`Ocupa ${campWeekH} h · ${campPct}% de la capacidad ${lineaView === "General" ? "total" : "de " + g0.linea} en ${WEEKLBL[week]}`} style={{ background: cst.chip, color: cst.text, fontWeight: 600 }}>{campPct}% de la semana</span>}{arch && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "#fef3c7", color: "#92400e", fontWeight: 600 }}><Archive size={11} /> Archivada</span>}</div>
+                    <div className="flex items-center gap-2 flex-wrap"><Megaphone size={14} color={arch ? "#a8a29e" : BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e" }}>{group.length} entregables</span>{!solLike && !arch && (() => { const ch = campHealth(group); return <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title="Salud de la campaña según fechas al aire y estado de las tareas" style={{ background: ch.chip, color: ch.text, fontWeight: 600 }}><CircleDot size={10} /> {ch.label}</span>; })()}{solLike ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#fffbeb", color: "#92400e", fontWeight: 600 }}>{reqH} h por decidir</span> : !arch && <span className="text-xs px-2 py-0.5 rounded-full" title={`Ocupa ${campWeekH} h · ${campPct}% de la capacidad ${lineaView === "General" ? "total" : "de " + g0.linea} en ${WEEKLBL[week]}`} style={{ background: cst.chip, color: cst.text, fontWeight: 600 }}>{campPct}% de la semana</span>}{arch && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "#fef3c7", color: "#92400e", fontWeight: 600 }}><Archive size={11} /> Archivada</span>}</div>
                     <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: "#a8a29e" }}><span className="flex items-center gap-1"><Building2 size={11} /> {g0.marca}</span><span className="flex items-center gap-1"><CircleDot size={11} /> {catOf(g0.campana)}</span><span className="flex items-center gap-1"><Layers size={11} /> {g0.linea}</span>{audience === "cliente" && <span className="flex items-center gap-1"><User2 size={11} /> PO {g0.poCliente}</span>}</div>
                   </div>
                 </div>
