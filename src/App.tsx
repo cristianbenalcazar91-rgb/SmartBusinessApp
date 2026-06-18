@@ -418,6 +418,26 @@ const SEED = BASE.map((r, i) => {
 LINEAS.forEach((l) => { const inL = SEED.filter((i) => i.linea === l); [...new Set(inL.map((i) => i.campana))].forEach((c) => inL.filter((i) => i.campana === c).forEach((i, k) => (i.prio = k))); });
 // Algunas tareas ya delegadas a 9Lab (cambian de dueño al Ejecutivo 9Lab; siguen contando en su segmento y además en 9Lab)
 SEED.forEach((it, k) => { if (it.estado === "aceptado" && !it.archivado && it.ejecucion !== "entregada" && k % 11 === 4) { it.delegBy = it.ejecutivo; it.ejecutivo = LAB_EXEC; it.lab = true; } });
+// Semana cerrada de ejemplo (la semana anterior a la actual) — para mostrar al cliente un cierre completo
+const CW = -1;
+const cwIso = (di) => iso(addDays(weekStart(CW), di));
+const cwStamp = (di) => `${DAYS[di]} ${addDays(weekStart(CW), di).getDate()} ${MONTHS[addDays(weekStart(CW), di).getMonth()]}`;
+let _cw = 200;
+const cwItem = (o) => ({ id: `E-${_cw++}`, sem: CW, brief: "", corCli: newCor(), corId: newCor(), corYear: COR_YEAR, prio: 0, prioridad: "Media", archivado: false, categoria: catOf(o.campana), ...o });
+const CLOSED_WEEK_SEED = [
+  cwItem({ marca: "SPR", linea: "DC1", campana: "Aeropuertos", ejecutivo: "M. Salazar", poCliente: "Carla Ríos", fAire: cwIso(1), skuId: "banner", etiqueta: "alta", cantidad: 3, estado: "aceptado", avance: 100, ejecucion: "entregada", dia: 1 }),
+  cwItem({ marca: "SPR", linea: "DC1", campana: "Aeropuertos", ejecutivo: "M. Salazar", poCliente: "Carla Ríos", fAire: cwIso(2), skuId: "post", etiqueta: "simple", cantidad: 4, estado: "aceptado", avance: 100, ejecucion: "entregada", dia: 2 }),
+  cwItem({ marca: "SPR", linea: "DC1", campana: "Aeropuertos", ejecutivo: "M. Salazar", poCliente: "Carla Ríos", fAire: cwIso(3), skuId: "carrusel", etiqueta: "media", cantidad: 2, estado: "aceptado", avance: 100, ejecucion: "entregada", dia: 3 }),
+  cwItem({ marca: "SPR", linea: "DC1", campana: "Aeropuertos", ejecutivo: "M. Salazar", poCliente: "Carla Ríos", fAire: cwIso(4), skuId: "storyest", etiqueta: "media", cantidad: 2, estado: "aceptado", avance: 60, ejecucion: "proceso", dia: 4 }),
+  cwItem({ marca: "SPR", linea: "DC1", campana: "Aeropuertos", ejecutivo: "M. Salazar", poCliente: "Carla Ríos", fAire: cwIso(2), skuId: "video", etiqueta: "alta", cantidad: 1, estado: "aceptado", avance: 40, ejecucion: "proceso", dia: 2, delayed: true, closeReason: "cliente", delayInfo: { from: cwStamp(2), to: "Sem. actual", reason: "cliente", comment: "Pendiente de aprobación de la pieza por el cliente", by: "M. Salazar", at: `${cwStamp(2)} · 17:40` } }),
+  cwItem({ marca: "MCN", linea: "DC1", campana: "Avances en efectivo", ejecutivo: "J. Andrade", poCliente: "Andrés Pinto", fAire: cwIso(0), skuId: "post", etiqueta: "simple", cantidad: 5, estado: "aceptado", avance: 100, ejecucion: "entregada", dia: 0 }),
+  cwItem({ marca: "MCN", linea: "DC1", campana: "Avances en efectivo", ejecutivo: "J. Andrade", poCliente: "Andrés Pinto", fAire: cwIso(1), skuId: "carrusel", etiqueta: "media", cantidad: 3, estado: "aceptado", avance: 100, ejecucion: "entregada", dia: 1 }),
+  cwItem({ marca: "MCN", linea: "DC1", campana: "Avances en efectivo", ejecutivo: "J. Andrade", poCliente: "Andrés Pinto", fAire: cwIso(3), skuId: "banner", etiqueta: "alta", cantidad: 2, estado: "aceptado", avance: 50, ejecucion: "proceso", dia: 3, delayed: true, closeReason: "retrabajo", delayInfo: { from: cwStamp(3), to: "Sem. actual", reason: "retrabajo", comment: "Ajuste de marca solicitado en revisión interna", by: "J. Andrade", at: `${cwStamp(3)} · 16:10` } }),
+  cwItem({ marca: "DIS", linea: "DC2", campana: "Fidelizados", ejecutivo: "P. Cevallos", poCliente: "Sofía León", fAire: cwIso(1), skuId: "carrusel", etiqueta: "media", cantidad: 3, estado: "aceptado", avance: 100, ejecucion: "entregada", dia: 1 }),
+  cwItem({ marca: "DIS", linea: "DC2", campana: "Fidelizados", ejecutivo: "P. Cevallos", poCliente: "Sofía León", fAire: cwIso(2), skuId: "video", etiqueta: "media", cantidad: 2, estado: "aceptado", avance: 100, ejecucion: "entregada", dia: 2 }),
+  cwItem({ marca: "DIS", linea: "DC2", campana: "Fidelizados", ejecutivo: "P. Cevallos", poCliente: "Sofía León", fAire: cwIso(4), skuId: "adapt", etiqueta: "simple", cantidad: 3, estado: "aceptado", avance: 70, ejecucion: "proceso", dia: 4 }),
+];
+SEED.push(...CLOSED_WEEK_SEED);
 const initCampOrder = {}; LINEAS.forEach((l) => { initCampOrder[l] = [...new Set(SEED.filter((i) => i.linea === l).map((i) => i.campana))]; });
 
 const ESTADO = {
@@ -513,6 +533,7 @@ function Main({ onExit }) {
   const addPtask = (title, date, prio) => { if (!title || !title.trim()) return; setPtasks((p) => [...p, { id: newPtId(), owner: me, title: title.trim(), date: date || iso(TODAY), done: false, prio: prio || "media" }]); };
   const togglePtask = (id) => setPtasks((p) => p.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
   const removePtask = (id) => setPtasks((p) => p.filter((t) => t.id !== id));
+  const [report, setReport] = useState(null);
   const fireToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2600); };
 
   const inWeek = (it) => weekFrac(it, week) > 0;
@@ -709,11 +730,15 @@ function Main({ onExit }) {
             {!isDirector && <button onClick={() => setCloseDay({ mandatory: false, tasks: dueToday })} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: dueToday.length ? "#fffbeb" : "#f0eee9", border: `1px solid ${dueToday.length ? "#fcd34d" : "#e7e5e4"}`, color: dueToday.length ? "#92400e" : "#78716c", fontWeight: 600 }}><ClipboardList size={13} /> Cierre del día{dueToday.length ? ` · ${dueToday.length}` : ""}</button>}
             {!isDirector && <button onClick={() => setCloseDay({ mandatory: true, tasks: dueToday })} title="Demo: simular que es la mañana siguiente y la jornada anterior no se cerró" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: INK, color: PAPER, fontWeight: 600 }}><Clock size={13} /> Simular nuevo día</button>}
           </div>}
+          {audience === "cliente" && view === "dashboard" && week < TODAY_WEEK && <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
+            <button onClick={() => setReport(week)} title="Semana cerrada · descarga el reporte completo (dashboard + detalle por campaña) en PDF" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><FileText size={13} /> Descargar reporte (PDF)</button>
+          </div>}
         </div>
         <div className="flex items-center gap-1 mt-4 mb-5 flex-nowrap overflow-x-auto rounded-2xl px-2 py-1.5" style={{ background: "#fff", border: "1px solid #ece9e3" }}>
           {audience === "agencia" && <NavBtn id="miSemana" icon={Sparkles} label="Mi semana" view={view} setView={setView} />}
+          {audience === "cliente" && <NavBtn id="solicitudes" icon={Files} label="Pendientes" view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && !i.reentry && inScopePerson(i)).length || null} />}
           {!isLab && <NavBtn id="pedidos" icon={ClipboardList} label={audience === "cliente" ? "Tareas en tráfico" : "Tareas"} view={view} setView={setView} />}
-          {!isLab && <NavBtn id="solicitudes" icon={Files} label={audience === "cliente" ? "Pendientes de ingreso" : "Solicitudes"} view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && (audience === "agencia" || !i.reentry) && inScopePerson(i)).length || null} />}
+          {audience === "agencia" && <NavBtn id="solicitudes" icon={Files} label="Solicitudes" view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="aprobaciones" icon={RefreshCcw} label="Aprobaciones" view={view} setView={setView} badge={items.filter((i) => i.reentry && ["pausada", "revision", "provisional"].includes(i.estado) && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="prioridades" icon={ListOrdered} label="Priorizaciones" view={view} setView={setView} />}
           {audience === "agencia" && <NavBtn id="lab" icon={UserPlus} label="9Lab" view={view} setView={setView} badge={items.filter((i) => i.lab && (isLab ? inScopePerson(i) : true)).length || null} />}
@@ -751,6 +776,7 @@ function Main({ onExit }) {
         {view === "ingreso" && audience === "agencia" && <Ingreso onAdd={addItems} week={week} actingExec={actingExec} isDirector={isDirector} lineaView={lineaView} campaigns={[...new Map(items.filter((it) => it.campana).map((it) => [it.campana, { name: it.campana, marca: it.marca, linea: it.linea, fAire: it.fAire }])).values()]} />}
       </div>
 
+      {report != null && <ClosedWeekReport week={report} items={items} inScopePerson={inScopePerson} onClose={() => setReport(null)} />}
       {decision && <DecisionModal decision={decision} consAll={consAll} onClose={() => setDecision(null)} onConfirm={confirmDecision} onSplit={confirmSplit} />}
       {editing && <EditModal item={editing} onClose={() => setEditing(null)} onSave={(u) => { set(u.id, u); setEditing(null); fireToast(`${u.id} actualizado`); }} />}
       {corModal && (() => { const live = items.find((x) => x.id === corModal.it.id) || corModal.it; return <CorTaskModal item={live} side={corModal.side} onClose={() => setCorModal(null)} onToast={fireToast} onCopy={copyLink} onRetro={(it) => { setCorModal(null); setRetroFor(it); }} onAddMember={corAddMember} onRemoveMember={corRemoveMember} />; })()}
@@ -925,6 +951,8 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
   const [fromW, setFromW] = useState(Math.max(MINWEEK, TODAY_WEEK - 1));
   const [showSol, setShowSol] = useState(true);
   const [open, setOpen] = useState({});
+  const [expOpen, setExpOpen] = useState(false);
+  const exportCamp = (c) => { setOpen({ [c]: true }); setExpOpen(false); if (typeof window !== "undefined") setTimeout(() => window.print(), 350); };
   const toggle = (c) => setOpen((p) => ({ ...p, [c]: !p[c] }));
   const toW = Math.min(MAXWEEK, fromW + span - 1);
   const days = []; for (let w = fromW; w <= toW; w++) for (let di = 0; di < 5; di++) days.push({ w, di, date: weekDays(w)[di] });
@@ -951,7 +979,7 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
     <div>
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div style={{ ...serif, fontSize: 24, fontWeight: 700, color: INK }}>Retroplanning</div>
-        <button onClick={() => { if (typeof window !== "undefined") window.print(); }} title="Genera un PDF para compartir con el cliente (sin costos). En el navegador: Guardar como PDF." className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={ctrlBtn}><PackageCheck size={13} /> Exportar / Imprimir (PDF)</button>
+        <button onClick={() => setExpOpen(true)} title="Exporta el retroplanning de una campaña a PDF" className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={ctrlBtn}><PackageCheck size={13} /> Exportar / Imprimir (PDF)</button>
       </div>
       <p className="text-sm mb-3" style={{ color: "#78716c" }}>Cada entregable va desde su <b>ingreso al tráfico</b> hasta su <b>fecha al aire</b>; si reprogramas la tarea, su inicio se mueve. Las barras que <b style={{ color: "#9f1239" }}>cruzan la fecha al aire</b> salen en rojo. Mueve la ventana para ver más adelante.</p>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -1008,6 +1036,79 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
             </Card>
           );
         })}
+      </div>
+      {expOpen && (
+        <div onClick={() => setExpOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(28,25,23,.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="rounded-2xl" style={{ background: "#fff", border: "1px solid #ece9e3", width: 420, maxWidth: "100%", maxHeight: "80vh", overflow: "auto" }}>
+            <div className="px-5 py-4" style={{ borderBottom: "1px solid #f0eee9" }}>
+              <div style={{ ...serif, fontSize: 18, fontWeight: 700, color: INK }}>Exportar retroplanning</div>
+              <div className="text-xs mt-0.5" style={{ color: "#78716c" }}>Elige la campaña que quieres exportar a PDF (una a la vez).</div>
+            </div>
+            <div className="p-3 flex flex-col gap-1.5">
+              {camps.length === 0 ? <div className="text-xs text-center py-4" style={{ color: "#a8a29e" }}>No hay campañas en esta ventana.</div> : camps.map((c) => {
+                const gg = visible.filter((i) => i.campana === c), ap = gg.filter((i) => !isSol(i)), ch = campHealth(ap.length ? ap : gg);
+                return <button key={c} onClick={() => exportCamp(c)} className="w-full text-left px-3 py-2.5 rounded-lg flex items-center justify-between gap-2" style={{ background: "#faf9f6", border: "1px solid #f0eee9" }}>
+                  <span className="flex items-center gap-2" style={{ minWidth: 0 }}><Megaphone size={14} color={BRAND} /><span className="text-sm truncate" style={{ fontWeight: 600, color: INK }}>{c}</span></span>
+                  <span className="flex items-center gap-2 flex-shrink-0"><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: ch.chip, color: ch.text, fontWeight: 600 }}>{ch.label}</span><PackageCheck size={14} color={BLUE} /></span>
+                </button>;
+              })}
+            </div>
+            <div className="px-3 pb-3"><button onClick={() => setExpOpen(false)} className="w-full text-xs px-3 py-2 rounded-full" style={{ background: "#f5f5f4", color: "#57534e", fontWeight: 600 }}>Cancelar</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClosedWeekReport({ week, items, inScopePerson, onClose }) {
+  const inW = items.filter((i) => i.sem === week && inScopePerson(i) && i.estado !== "rechazado");
+  const done = inW.filter((i) => i.ejecucion === "entregada");
+  const moved = inW.filter((i) => i.delayed && i.ejecucion !== "entregada");
+  const undone = inW.filter((i) => i.ejecucion !== "entregada" && !i.delayed);
+  const totalH = inW.reduce((a, i) => a + itemHoursWeek(i, week).tot, 0);
+  const segs = LINEAS.map((l) => { const its = inW.filter((i) => i.linea === l); const cons = its.reduce((a, i) => a + itemHoursWeek(i, week).tot, 0); const cap = Math.round(totalCapLinea(l) * capFactor(week)); return { l, cons, cap, pct: cap ? Math.round((cons / cap) * 100) : 0, n: its.length }; }).filter((s) => s.n > 0);
+  const camps = [...new Set(inW.map((i) => i.campana))];
+  const statusOf = (i) => i.ejecucion === "entregada" ? { t: "Completada", c: "#115e59", bg: "#ccfbf1" } : i.delayed ? { t: "Movida", c: "#9f1239", bg: "#fee2e2" } : { t: "No entregada", c: "#92400e", bg: "#fef3c7" };
+  const Stat = ({ n, label, color }) => <div className="rounded-xl px-4 py-3" style={{ border: "1px solid #ece9e3", background: "#faf9f6", flex: 1, minWidth: 110 }}><div style={{ ...serif, fontSize: 22, fontWeight: 700, color }}>{n}</div><div className="text-xs mt-0.5" style={{ color: "#78716c", fontWeight: 600 }}>{label}</div></div>;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(28,25,23,.5)", zIndex: 70, overflow: "auto", padding: 24 }}>
+      <div className="rounded-2xl" style={{ background: "#fff", maxWidth: 820, margin: "0 auto", border: "1px solid #ece9e3" }}>
+        <div className="px-6 py-4 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: "1px solid #f0eee9" }}>
+          <div><div style={{ ...serif, fontSize: 20, fontWeight: 700, color: INK }}>Reporte de cierre · {weekRange(week)}</div><div className="text-xs" style={{ color: "#78716c" }}>Semana cerrada · {inW.length} entregables</div></div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { if (typeof window !== "undefined") window.print(); }} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><FileText size={13} /> Descargar PDF</button>
+            <button onClick={onClose} className="rounded-full flex items-center justify-center" style={{ width: 30, height: 30, background: "#f5f5f4", color: "#57534e" }}><X size={15} /></button>
+          </div>
+        </div>
+        <div className="p-6">
+          <div className="flex items-stretch gap-3 flex-wrap mb-5">
+            <Stat n={inW.length} label="Entregables" color={INK} />
+            <Stat n={done.length} label="Completadas" color="#115e59" />
+            <Stat n={moved.length} label="Movidas" color="#9f1239" />
+            <Stat n={undone.length} label="No entregadas" color="#92400e" />
+            <Stat n={`${totalH} h`} label="Horas de producción" color={BRAND} />
+          </div>
+          {segs.length > 0 && <div className="mb-5">
+            <div className="text-sm mb-2" style={{ fontWeight: 700, color: INK }}>Ocupación por segmento</div>
+            <div className="flex flex-col gap-2">{segs.map((s) => <div key={s.l}><div className="flex items-center justify-between text-xs mb-1"><span style={{ fontWeight: 600, color: INK }}>{s.l}</span><span style={{ color: "#78716c" }}>{s.cons} / {s.cap} h · {s.pct}%</span></div><div className="rounded-full overflow-hidden" style={{ height: 8, background: "#f0eee9" }}><div style={{ width: Math.min(100, s.pct) + "%", height: "100%", background: statusColor(s.pct).bar }} /></div></div>)}</div>
+          </div>}
+          <div className="text-sm mb-2" style={{ fontWeight: 700, color: INK }}>Detalle por campaña</div>
+          <div className="flex flex-col gap-3">
+            {camps.map((c) => { const g = inW.filter((i) => i.campana === c), g0 = g[0]; return (
+              <div key={c} className="rounded-xl" style={{ border: "1px solid #ece9e3", overflow: "hidden" }}>
+                <div className="px-4 py-2 flex items-center gap-2 flex-wrap" style={{ background: "#faf9f6", borderBottom: "1px solid #f0eee9" }}><Megaphone size={13} color={BRAND} /><span className="text-sm" style={{ fontWeight: 700, color: INK }}>{c}</span><span className="text-xs" style={{ color: "#a8a29e" }}>{g0.marca} · {catOf(c)} · {g0.linea} · {g.length} entregables</span></div>
+                <div>{g.map((i, k) => { const st = statusOf(i); return (
+                  <div key={i.id} className="px-4 py-2 flex items-start justify-between gap-3" style={{ borderTop: k ? "1px solid #f7f5f1" : "none" }}>
+                    <div style={{ minWidth: 0 }}><div className="text-xs" style={{ fontWeight: 600, color: INK }}>{skuById(i.skuId).name} <span style={{ color: "#a8a29e", fontWeight: 400 }}>×{i.cantidad}</span> <span style={{ color: "#a8a29e", fontWeight: 400 }}>· PO {i.poCliente}</span></div>{i.delayed && i.delayInfo && <div className="text-xs mt-0.5" style={{ color: "#9f1239" }}>Movida: {i.delayInfo.from} → {i.delayInfo.to} · {CLOSE_REASONS[i.delayInfo.reason] || ""}{i.delayInfo.comment ? ` · "${i.delayInfo.comment}"` : ""}</div>}</div>
+                    <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: st.bg, color: st.c, fontWeight: 600 }}>{st.t}</span>
+                  </div>
+                ); })}</div>
+              </div>
+            ); })}
+          </div>
+          <div className="text-xs mt-5 pt-3" style={{ borderTop: "1px solid #f0eee9", color: "#a8a29e" }}>Reporte para el cliente · sin costos. En el navegador: Guardar como PDF.</div>
+        </div>
       </div>
     </div>
   );
