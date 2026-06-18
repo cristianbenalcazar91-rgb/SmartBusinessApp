@@ -704,6 +704,10 @@ function Main({ onExit }) {
               </>;
             })()}
           </>}
+          {audience === "agencia" && !isDirector && <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
+            <button onClick={() => setCloseDay({ mandatory: false, tasks: dueToday })} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: dueToday.length ? "#fffbeb" : "#f0eee9", border: `1px solid ${dueToday.length ? "#fcd34d" : "#e7e5e4"}`, color: dueToday.length ? "#92400e" : "#78716c", fontWeight: 600 }}><ClipboardList size={13} /> Cierre del día{dueToday.length ? ` · ${dueToday.length}` : ""}</button>
+            <button onClick={() => setCloseDay({ mandatory: true, tasks: dueToday })} title="Demo: simular que es la mañana siguiente y la jornada anterior no se cerró" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: INK, color: PAPER, fontWeight: 600 }}><Clock size={13} /> Simular nuevo día</button>
+          </div>}
         </div>
         <div className="flex items-center gap-1 mt-4 mb-5 flex-wrap">
           {audience === "agencia" && <NavBtn id="miSemana" icon={Sparkles} label="Mi semana" view={view} setView={setView} />}
@@ -715,10 +719,6 @@ function Main({ onExit }) {
           {!dashDisabled && <NavBtn id="semana" icon={CalendarDays} label={audience === "cliente" ? "Planificación" : "Planificador"} view={view} setView={setView} />}
           <NavBtn id="retro" icon={Megaphone} label="Retroplanning" view={view} setView={setView} />
           {audience === "agencia" && !isLab && <NavBtn id="ingreso" icon={PlusCircle} label="Ingresar pedido" view={view} setView={setView} />}
-          {audience === "agencia" && !isDirector && <div className="flex items-center gap-1.5 ml-auto">
-            <button onClick={() => setCloseDay({ mandatory: false, tasks: dueToday })} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: dueToday.length ? "#fffbeb" : "#f0eee9", border: `1px solid ${dueToday.length ? "#fcd34d" : "#e7e5e4"}`, color: dueToday.length ? "#92400e" : "#78716c", fontWeight: 600 }}><ClipboardList size={13} /> Cierre del día{dueToday.length ? ` · ${dueToday.length}` : ""}</button>
-            <button onClick={() => setCloseDay({ mandatory: true, tasks: dueToday })} title="Demo: simular que es la mañana siguiente y la jornada anterior no se cerró" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: INK, color: PAPER, fontWeight: 600 }}><Clock size={13} /> Simular nuevo día</button>
-          </div>}
         </div>
 
         {audience === "agencia" && myReqs.length > 0 && (
@@ -1054,11 +1054,6 @@ function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me,
         <KPI n={espera.length} label="Espera al cliente" color="#1e40af" bg="#eff6ff" target="solicitudes" />
         <KPI n={myPt.filter((t) => !t.done).length} label="Mis pendientes" color={INK} bg="#faf9f6" />
       </div>
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-        <ListCard icon={AlertTriangle} color="#be123c" title="En riesgo de fecha al aire" arr={riesgo} emptyText="Nada en riesgo. Vas al día." target="retro" />
-        <ListCard icon={Clock} color="#d97706" title="Vence esta semana" arr={vence} emptyText="Sin entregas esta semana." target="semana" />
-        {!isLab && <ListCard icon={RefreshCcw} color={BLUE} title="Espera decisión del cliente" arr={espera} emptyText="Nada esperando al cliente." target="solicitudes" />}
-      </div>
       <Card style={{ padding: 0, marginTop: 16 }}>
         <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid #f0eee9" }}>
           <span className="flex items-center gap-2 text-sm" style={{ fontWeight: 700, color: INK }}><Sparkles size={15} color={BRAND} /> Mis pendientes <span className="text-xs" style={{ color: "#a8a29e", fontWeight: 400 }}>(notas y tareas internas · no van a COR)</span></span>
@@ -1095,6 +1090,11 @@ function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me,
           )}
         </div>
       </Card>
+      <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+        <ListCard icon={AlertTriangle} color="#be123c" title="En riesgo de fecha al aire" arr={riesgo} emptyText="Nada en riesgo. Vas al día." target="retro" />
+        <ListCard icon={Clock} color="#d97706" title="Vence esta semana" arr={vence} emptyText="Sin entregas esta semana." target="semana" />
+        {!isLab && <ListCard icon={RefreshCcw} color={BLUE} title="Espera decisión del cliente" arr={espera} emptyText="Nada esperando al cliente." target="solicitudes" />}
+      </div>
       <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
         <ListCard icon={UserPlus} color={BLUE} title={isLab ? "Mis tareas 9Lab" : "Delegado a 9Lab"} arr={deleg} emptyText="Sin tareas en 9Lab." target="lab" />
       </div>
