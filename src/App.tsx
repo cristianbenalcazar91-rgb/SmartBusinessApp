@@ -921,9 +921,11 @@ function ReasonBubbleChart({ data }) {
 }
 
 function Retro({ items, inLinea, inScopePerson, audience, setView }) {
-  const [span, setSpan] = useState(4);
+  const [span, setSpan] = useState(8);
   const [fromW, setFromW] = useState(Math.max(MINWEEK, TODAY_WEEK - 1));
   const [showSol, setShowSol] = useState(true);
+  const [open, setOpen] = useState({});
+  const toggle = (c) => setOpen((p) => ({ ...p, [c]: !p[c] }));
   const toW = Math.min(MAXWEEK, fromW + span - 1);
   const days = []; for (let w = fromW; w <= toW; w++) for (let di = 0; di < 5; di++) days.push({ w, di, date: weekDays(w)[di] });
   const N = days.length;
@@ -975,13 +977,14 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
           const g0 = g[0], appr = g.filter((i) => !isSol(i)), ch = campHealth(appr.length ? appr : g), lateN = appr.filter((it) => taskRisk(it) === "late").length;
           return (
             <Card key={camp} style={{ padding: 0, overflow: "hidden" }}>
-              <div className="px-4 py-2.5 flex items-center gap-2 flex-wrap" style={{ borderBottom: "1px solid #f0eee9" }}>
+              <div onClick={() => toggle(camp)} className="px-4 py-2.5 flex items-center gap-2 flex-wrap" style={{ borderBottom: open[camp] ? "1px solid #f0eee9" : "none", cursor: "pointer" }}>
+                {open[camp] ? <ChevronDown size={16} color="#a8a29e" /> : <ChevronRight size={16} color="#a8a29e" />}
                 <Megaphone size={15} color={BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: ch.chip, color: ch.text, fontWeight: 600 }}><CircleDot size={10} /> {ch.label}</span>
                 <span className="text-xs" style={{ color: "#a8a29e" }}>{g0.marca} · {catOf(camp)} · {g0.linea} · {g.length} entregables</span>
                 {lateN > 0 && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ml-auto" style={{ background: "#fee2e2", color: "#9f1239", fontWeight: 600 }}><AlertTriangle size={11} /> {lateN} cruzan la fecha al aire · visto bueno cliente</span>}
               </div>
-              <div style={{ overflowX: "auto" }}>
+              {open[camp] && <div style={{ overflowX: "auto" }}>
                 <div style={{ minWidth: 200 + N * 30 }}>
                   <div style={{ display: "grid", gridTemplateColumns: tpl, alignItems: "stretch", borderBottom: "1px solid #f7f5f1", background: "#faf9f6" }}>
                     <div className="px-3 py-1.5 text-xs" style={{ color: "#a8a29e", fontWeight: 600 }}>Entregable</div>
@@ -1001,7 +1004,7 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
                     );
                   })}
                 </div>
-              </div>
+              </div>}
             </Card>
           );
         })}
@@ -1016,8 +1019,11 @@ function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me,
   const vence = mine.filter((i) => i.estado === "aceptado" && i.ejecucion !== "entregada" && weekFrac(i, TODAY_WEEK) > 0).sort((a, b) => a.fAire.localeCompare(b.fAire));
   const espera = mine.filter((i) => ["revision", "provisional"].includes(i.estado));
   const deleg = items.filter((i) => i.lab && !i.archivado && (isDirector || i.delegBy === me));
-  const myPt = ptasks.filter((t) => t.owner === me).sort((a, b) => Number(a.done) - Number(b.done) || a.date.localeCompare(b.date));
+  const myPt = ptasks.filter((t) => t.owner === me);
+  const ptActive = myPt.filter((t) => !t.done).sort((a, b) => a.date.localeCompare(b.date));
+  const ptArch = myPt.filter((t) => t.done).sort((a, b) => b.date.localeCompare(a.date));
   const [nt, setNt] = useState(""); const [nd, setNd] = useState(iso(TODAY));
+  const [showArch, setShowArch] = useState(false);
   const today = weekDays(TODAY_WEEK)[TODAY_IDX];
   const Row = ({ it }) => { const r = HEALTH[taskRisk(it)] || HEALTH.ok; return (
     <button onClick={() => onOpenCor(it, "agencia")} className="w-full text-left px-3 py-2 rounded-lg flex items-center justify-between gap-2" style={{ background: "#faf9f6", border: "1px solid #f0eee9" }}>
@@ -1052,12 +1058,11 @@ function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me,
         <ListCard icon={AlertTriangle} color="#be123c" title="En riesgo de fecha al aire" arr={riesgo} emptyText="Nada en riesgo. Vas al día." target="retro" />
         <ListCard icon={Clock} color="#d97706" title="Vence esta semana" arr={vence} emptyText="Sin entregas esta semana." target="semana" />
         {!isLab && <ListCard icon={RefreshCcw} color={BLUE} title="Espera decisión del cliente" arr={espera} emptyText="Nada esperando al cliente." target="solicitudes" />}
-        <ListCard icon={UserPlus} color={BLUE} title={isLab ? "Mis tareas 9Lab" : "Delegado a 9Lab"} arr={deleg} emptyText="Sin tareas en 9Lab." target="lab" />
       </div>
       <Card style={{ padding: 0, marginTop: 16 }}>
         <div className="px-4 py-2.5 flex items-center justify-between" style={{ borderBottom: "1px solid #f0eee9" }}>
           <span className="flex items-center gap-2 text-sm" style={{ fontWeight: 700, color: INK }}><Sparkles size={15} color={BRAND} /> Mis pendientes <span className="text-xs" style={{ color: "#a8a29e", fontWeight: 400 }}>(notas y tareas internas · no van a COR)</span></span>
-          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e", fontWeight: 700 }}>{myPt.filter((t) => !t.done).length} abiertas</span>
+          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e", fontWeight: 700 }}>{ptActive.length} abiertas</span>
         </div>
         <div className="p-3">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -1066,17 +1071,33 @@ function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me,
             <button onClick={() => { onAddPtask(nt, nd); setNt(""); }} className="text-xs px-3 py-2 rounded-full flex items-center gap-1" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><Check size={13} /> Agregar</button>
           </div>
           <div className="flex flex-col gap-1.5">
-            {myPt.length === 0 ? <div className="text-xs text-center py-3" style={{ color: "#a8a29e" }}>Sin pendientes. Agrega el primero arriba.</div> : myPt.map((t) => (
-              <div key={t.id} className="px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: t.done ? "#f7f5f1" : "#faf9f6", border: "1px solid #f0eee9" }}>
-                <button onClick={() => onTogglePtask(t.id)} className="rounded flex items-center justify-center" style={{ width: 20, height: 20, flexShrink: 0, background: t.done ? BRAND : "#fff", border: `1px solid ${t.done ? BRAND : "#d6d3d1"}` }}>{t.done && <Check size={13} color="#fff" />}</button>
-                <div className="flex-1" style={{ minWidth: 0 }}><span className="text-sm" style={{ color: t.done ? "#a8a29e" : INK, textDecoration: t.done ? "line-through" : "none" }}>{t.title}</span></div>
+            {ptActive.length === 0 ? <div className="text-xs text-center py-3" style={{ color: "#a8a29e" }}>Sin pendientes abiertos. Agrega uno arriba.</div> : ptActive.map((t) => (
+              <div key={t.id} className="px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: "#faf9f6", border: "1px solid #f0eee9" }}>
+                <button onClick={() => onTogglePtask(t.id)} title="Marcar como terminada (va a archivados)" className="rounded flex items-center justify-center" style={{ width: 20, height: 20, flexShrink: 0, background: "#fff", border: "1px solid #d6d3d1" }} />
+                <div className="flex-1" style={{ minWidth: 0 }}><span className="text-sm" style={{ color: INK }}>{t.title}</span></div>
                 <span className="text-xs" style={{ color: "#a8a29e", whiteSpace: "nowrap" }}>{fmt(t.date)}</span>
-                <button onClick={() => onRemovePtask(t.id)} className="rounded flex items-center justify-center" style={{ width: 24, height: 24, color: "#c4c0b8" }}><Trash2 size={13} /></button>
+                <button onClick={() => onRemovePtask(t.id)} title="Eliminar" className="rounded flex items-center justify-center" style={{ width: 24, height: 24, color: "#c4c0b8" }}><Trash2 size={13} /></button>
               </div>
             ))}
           </div>
+          {ptArch.length > 0 && (
+            <div className="mt-3" style={{ borderTop: "1px solid #f0eee9", paddingTop: 10 }}>
+              <button onClick={() => setShowArch((s) => !s)} className="text-xs flex items-center gap-1.5" style={{ color: "#78716c", fontWeight: 600 }}>{showArch ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Archivados ({ptArch.length})</button>
+              {showArch && <div className="flex flex-col gap-1.5 mt-2">{ptArch.map((t) => (
+                <div key={t.id} className="px-3 py-2 rounded-lg flex items-center gap-2" style={{ background: "#f7f5f1", border: "1px solid #f0eee9" }}>
+                  <button onClick={() => onTogglePtask(t.id)} title="Restaurar" className="rounded flex items-center justify-center" style={{ width: 20, height: 20, flexShrink: 0, background: BRAND, border: `1px solid ${BRAND}` }}><Check size={13} color="#fff" /></button>
+                  <div className="flex-1" style={{ minWidth: 0 }}><span className="text-sm" style={{ color: "#a8a29e", textDecoration: "line-through" }}>{t.title}</span></div>
+                  <span className="text-xs" style={{ color: "#c4c0b8", whiteSpace: "nowrap" }}>{fmt(t.date)}</span>
+                  <button onClick={() => onRemovePtask(t.id)} title="Eliminar" className="rounded flex items-center justify-center" style={{ width: 24, height: 24, color: "#c4c0b8" }}><Trash2 size={13} /></button>
+                </div>
+              ))}</div>}
+            </div>
+          )}
         </div>
       </Card>
+      <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+        <ListCard icon={UserPlus} color={BLUE} title={isLab ? "Mis tareas 9Lab" : "Delegado a 9Lab"} arr={deleg} emptyText="Sin tareas en 9Lab." target="lab" />
+      </div>
     </div>
   );
 }
