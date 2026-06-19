@@ -438,7 +438,7 @@ const CLOSED_WEEK_SEED = [
   cwItem({ marca: "DIS", linea: "DC2", campana: "Fidelizados", ejecutivo: "P. Cevallos", poCliente: "Sofía León", fAire: cwIso(4), skuId: "adapt", etiqueta: "simple", cantidad: 3, estado: "aceptado", avance: 70, ejecucion: "proceso", dia: 4 }),
 ];
 SEED.push(...CLOSED_WEEK_SEED);
-const initCampOrder = {}; LINEAS.forEach((l) => { initCampOrder[l] = [...new Set(SEED.filter((i) => i.linea === l).map((i) => i.campana))]; });
+const initCampOrder = [...new Set(SEED.map((i) => i.campana))];
 
 const ESTADO = {
   borrador: { bg: "#f5f5f4", fg: "#a8a29e", label: "Borrador" },
@@ -454,14 +454,14 @@ const dateInput = { background: "#fff", border: "1px solid #e7e5e4", borderRadiu
 
 const TODAY_WEEK = 0; // la semana actual del prototipo
 const TODAY_IDX = wdOf(iso(TODAY)); // día actual dentro de la semana (0=Lun … 4=Vie)
-// Riesgo de fecha al aire y salud de campaña
+// Riesgo de fecha de entrega y salud de campaña
 const airWeek = (it) => Math.round((new Date(it.fAire + "T00:00:00") - MONDAY) / 6048e5); // 6048e5 = 7 días en ms
 const planSpan = (it) => { const ws = planWeeks(it); return { start: Math.min(...ws), end: Math.max(...ws) }; };
 function taskRisk(it) {
   if (it.archivado || it.ejecucion === "entregada") return "ok";
   if (it.estado !== "aceptado") return "none";
   const aw = airWeek(it), pe = planSpan(it).end;
-  if (pe > aw || aw < TODAY_WEEK) return "late";          // el plan cruza / ya pasó la fecha al aire
+  if (pe > aw || aw < TODAY_WEEK) return "late";          // el plan cruza / ya pasó la fecha de entrega
   if (aw === TODAY_WEEK || (it.retrabajos || []).length) return "risk";
   return "ok";
 }
@@ -472,6 +472,9 @@ const HEALTH = {
 };
 function campHealth(tasks) { const act = tasks.filter((t) => !t.archivado); if (!act.length) return HEALTH.ok; const r = act.map(taskRisk); if (r.includes("late")) return HEALTH.late; if (r.includes("risk")) return HEALTH.risk; return HEALTH.ok; }
 // Tareas personales del ejecutivo (no van a COR, no consumen capacidad)
+const agencyOwner = (it) => (it.lab ? it.delegBy : it.ejecutivo);
+const effDay = (x) => { if (x.dia != null) return x.dia; if (x.dayPlan) { const ks = Object.keys(x.dayPlan).map(Number).filter((d) => x.dayPlan[d] > 0); if (ks.length) return Math.min(...ks); } return 2; };
+const resyncPrioByDay = (arr, campana, sem) => { const g = arr.filter((x) => x.campana === campana && x.sem === sem && ["revision", "provisional", "aceptado"].includes(x.estado) && !x.archivado && x.ejecucion !== "entregada").sort((a, b) => effDay(a) - effDay(b) || a.prio - b.prio || a.linea.localeCompare(b.linea) || a.id.localeCompare(b.id)); const pm = {}; g.forEach((x, k) => (pm[x.id] = k)); return arr.map((x) => (pm[x.id] != null ? { ...x, prio: pm[x.id] } : x)); };
 const PERSONAL_SEED = [
   { id: "PT1", owner: "M. Salazar", title: "Status semanal con cliente DIS", date: iso(TODAY), done: false, prio: "alta" },
   { id: "PT2", owner: "M. Salazar", title: "Revisar brief de nueva campaña Verano", date: iso(addDays(TODAY, 1)), done: false, prio: "media" },
@@ -517,6 +520,18 @@ function Main({ onExit }) {
   const corMembers = (item, side) => side === "cliente" ? (item.membersCli || [item.poCliente].filter(Boolean)) : (item.membersAg || (() => { const { per } = itemHours(item); return ROLES.filter((r) => per[r.id] > 0).map((r) => CREATIVOS[r.id]); })());
   const corAddMember = (item, side, name) => { const cur = corMembers(item, side); if (cur.includes(name)) return; set(item.id, side === "cliente" ? { membersCli: [...cur, name] } : { membersAg: [...cur, name] }); fireToast(`${name} agregado en COR (${side})`); };
   const corRemoveMember = (item, side, name) => { const cur = corMembers(item, side); set(item.id, side === "cliente" ? { membersCli: cur.filter((n) => n !== name) } : { membersAg: cur.filter((n) => n !== name) }); fireToast(`${name} quitado en COR (${side})`); };
+  const reassignOwner = (ids, side, newName) => { if (!newName) return; let n = 0; const ensure = (arr, name) => (name && !arr.includes(name) ? [...arr, name] : arr);
+    setItems((p) => p.map((it) => {
+      if (!ids.includes(it.id)) return it; n++;
+      const oldOwner = side === "agencia" ? (it.lab ? it.delegBy : it.ejecutivo) : it.poCliente;
+      let memAg = corMembers(it, "agencia"), memCli = corMembers(it, "cliente");
+      memAg = ensure(ensure(memAg, oldOwner), newName); memCli = ensure(ensure(memCli, oldOwner), newName);
+      const upd = { ...it, membersAg: memAg, membersCli: memCli };
+      if (side === "agencia") { if (it.lab) upd.delegBy = newName; else upd.ejecutivo = newName; } else upd.poCliente = newName;
+      return upd;
+    }));
+    fireToast(`${n} tarea${n !== 1 ? "s" : ""} reasignada${n !== 1 ? "s" : ""} a ${newName} · agregado como miembro en COR (cliente y agencia)`);
+  };
   const [splitDays, setSplitDays] = useState(null);
   const [cfg, setCfg] = useState(false);
   const [timeFor, setTimeFor] = useState(null);
@@ -526,6 +541,7 @@ function Main({ onExit }) {
   const [showCap, setShowCap] = useState(false);
   useEffect(() => { setShowCap(audience === "cliente"); }, [audience, actingPO, actingExec]);
   const [moveReqs, setMoveReqs] = useState([]);
+  const [plannerReqs, setPlannerReqs] = useState([]);
   const [notifs, setNotifs] = useState([]);
   const notify = (o) => setNotifs((p) => [{ id: `N-${Math.random().toString(36).slice(2, 7)}`, at: moveStamp(), read: false, sev: "info", forAgency: false, forExec: null, forClientAll: false, forPO: null, ...o }, ...p].slice(0, 40));
   const [savedHours, setSavedHours] = useState(SAVED_BASE);
@@ -580,8 +596,10 @@ function Main({ onExit }) {
     if (!asDraft) [...new Set(rows.map((r) => r.poCliente))].forEach((po) => { const n = rows.filter((r) => r.poCliente === po).length; notify({ sev: "info", forPO: po, text: `La agencia ingresó ${n} entregable(s) a tu revisión.` }); });
     fireToast(asDraft ? `${rows.length} entregable(s) en borrador` : `${rows.length} a revisión · semana ${rows[0].sem + 1}`);
   };
-  const moveItem = (it, dir) => setItems((prev) => { const g = prev.filter((x) => x.linea === it.linea && x.campana === it.campana && x.sem === it.sem && ["revision", "provisional", "aceptado"].includes(x.estado)).sort((a, b) => a.prio - b.prio); const i = g.findIndex((x) => x.id === it.id), sw = g[i + dir]; if (!sw) return prev; return prev.map((x) => x.id === it.id ? { ...x, prio: sw.prio } : x.id === sw.id ? { ...x, prio: it.prio } : x); });
-  const moveCamp = (linea, camp, dir) => setCampOrder((prev) => { const arr = [...(prev[linea] || [])]; const i = arr.indexOf(camp); if (i < 0 || i + dir < 0 || i + dir >= arr.length) return prev; [arr[i], arr[i + dir]] = [arr[i + dir], arr[i]]; return { ...prev, [linea]: arr }; });
+  const moveItem = (it, dir) => setItems((prev) => { const g = prev.filter((x) => x.campana === it.campana && x.sem === it.sem && ["revision", "provisional", "aceptado"].includes(x.estado)).sort((a, b) => a.prio - b.prio || a.linea.localeCompare(b.linea) || a.id.localeCompare(b.id)); const i = g.findIndex((x) => x.id === it.id), j = i + dir; if (i < 0 || j < 0 || j >= g.length) return prev; const order = [...g]; [order[i], order[j]] = [order[j], order[i]]; const pm = {}; order.forEach((x, k) => (pm[x.id] = k)); return prev.map((x) => (pm[x.id] != null ? { ...x, prio: pm[x.id] } : x)); });
+  const moveCamp = (camp, dir) => setCampOrder((arr) => { const i = arr.indexOf(camp); if (i < 0 || i + dir < 0 || i + dir >= arr.length) return arr; const a = [...arr]; [a[i], a[i + dir]] = [a[i + dir], a[i]]; return a; });
+  const reorderItem = (dragId, targetId) => setItems((prev) => { const d = prev.find((x) => x.id === dragId), t = prev.find((x) => x.id === targetId); if (!d || !t || d.id === t.id || d.campana !== t.campana || d.sem !== t.sem) return prev; const g = prev.filter((x) => x.campana === d.campana && x.sem === d.sem && ["revision", "provisional", "aceptado"].includes(x.estado) && !x.archivado && x.ejecucion !== "entregada").sort((a, b) => a.prio - b.prio || a.linea.localeCompare(b.linea) || a.id.localeCompare(b.id)); const from = g.findIndex((x) => x.id === dragId), to = g.findIndex((x) => x.id === targetId); if (from < 0 || to < 0) return prev; const arr = [...g]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); const pm = {}; arr.forEach((x, k) => (pm[x.id] = k)); return prev.map((x) => (pm[x.id] != null ? { ...x, prio: pm[x.id] } : x)); });
+  const reorderCamp = (dragCamp, targetCamp) => setCampOrder((arr) => { const from = arr.indexOf(dragCamp), to = arr.indexOf(targetCamp); if (from < 0 || to < 0 || from === to) return arr; const a = [...arr]; const [m] = a.splice(from, 1); a.splice(to, 0, m); return a; });
   const moveCampWeek = (linea, camp, newSem) => { setItems((prev) => prev.map((x) => (x.linea === linea && x.campana === camp ? { ...x, sem: newSem, fAire: iso(addDays(weekStart(newSem), wdOf(x.fAire))) } : x))); fireToast(`${camp} movida a ${WEEKLBL[newSem]}`); };
   const logEntry = (by, text) => ({ by, at: moveStamp(), text });
   const placeItem = (x, toSem, toDia) => ({ ...x, sem: toSem, dia: toDia, weekPlan: null, weekLabels: null, dayPlan: null, fAire: iso(addDays(weekStart(toSem), toDia)) });
@@ -637,17 +655,24 @@ function Main({ onExit }) {
     fireToast(`Rechazado por ${approver} · ${req.name}`);
   };
   const copyLink = (corId) => { try { navigator.clipboard.writeText(`https://cor.works/task/${corId}`); } catch (e) {} fireToast(`Link de ${corId} copiado`); };
-  const moveDia = (id, dia) => setItems((p) => p.map((x) => (x.id === id ? { ...x, dia, dayPlan: null } : x)));
+  const moveDia = (id, dia) => setItems((p) => { const t = p.find((x) => x.id === id); const np = p.map((x) => (x.id === id ? { ...x, dia, dayPlan: null } : x)); return t ? resyncPrioByDay(np, t.campana, t.sem) : np; });
+  const requestPlannerMove = (mover, toDia, wk, victim, mode, by) => { const owner = agencyOwner(mover); const id = "preq-" + Math.random().toString(36).slice(2, 8); setPlannerReqs((p) => [{ id, moverId: mover.id, moverName: skuById(mover.skuId).name, campana: mover.campana, toDia, wk, victimId: victim ? victim.id : null, victimName: victim ? skuById(victim.skuId).name : null, mode, by, owner, at: moveStamp() }, ...p]); notify({ sev: "alert", forAgency: true, forExec: owner, text: `${by} te pide mover "${skuById(mover.skuId).name} · ${mover.campana}" al ${DAYS[toDia]} de ${WEEKLBL[wk]}${victim ? ` (reemplazando a "${skuById(victim.skuId).name}")` : ""}. Apruébalo o recházalo en el tablero.` }); fireToast(`Solicitud enviada a ${owner}`); };
+  const approvePlannerReq = (r, by) => { const mv = items.find((i) => i.id === r.moverId); setPlannerReqs((p) => p.filter((x) => x.id !== r.id)); if (!mv) return; moveDia(r.moverId, r.toDia); notify({ sev: "info", forAgency: true, forExec: r.by, text: `${by} aprobó tu solicitud: "${skuById(mv.skuId).name} · ${mv.campana}" se movió al ${DAYS[r.toDia]} de ${WEEKLBL[r.wk]}.` }); fireToast(`Solicitud aprobada · ${skuById(mv.skuId).name} movida`); };
+  const rejectPlannerReq = (r, by) => { setPlannerReqs((p) => p.filter((x) => x.id !== r.id)); notify({ sev: "alert", forAgency: true, forExec: r.by, text: `${by} rechazó tu solicitud de mover "${r.moverName} · ${r.campana}".` }); fireToast("Solicitud rechazada"); };
   const plannerReplace = (moverId, toDia, wk, victimId, dest) => {
     const mv = items.find((i) => i.id === moverId), vc = items.find((i) => i.id === victimId);
-    setItems((p) => p.map((x) => {
+    setItems((p) => { let np = p.map((x) => {
       if (x.id === moverId) return { ...x, sem: wk, dia: toDia, dayPlan: null, weekPlan: null, weekLabels: null, fAire: iso(addDays(weekStart(wk), toDia)) };
       if (x.id === victimId) {
         if (dest.kind === "day") return { ...x, sem: wk, dia: dest.dia, dayPlan: null, weekPlan: null, weekLabels: null, fAire: iso(addDays(weekStart(wk), dest.dia)), log: [...(x.log || []), logEntry(me, `Desplazada al ${DAYS[dest.dia]} por replanificación en el tablero`)] };
         return { ...x, sem: dest.sem, dia: null, dayPlan: null, weekPlan: null, weekLabels: null, fAire: iso(addDays(weekStart(dest.sem), wdOf(x.fAire))), log: [...(x.log || []), logEntry(me, `Desplazada a ${WEEKLBL[dest.sem]} por replanificación en el tablero`)] };
       }
       return x;
-    }));
+    });
+      if (mv) np = resyncPrioByDay(np, mv.campana, wk);
+      if (vc) np = resyncPrioByDay(np, vc.campana, dest.kind === "day" ? wk : dest.sem);
+      return np;
+    });
     if (mv && vc) { fireToast(`${skuById(mv.skuId).name} reemplazó a ${skuById(vc.skuId).name} · ${dest.kind === "day" ? `movida al ${DAYS[dest.dia]}` : `movida a ${WEEKLBL[dest.sem]}`}`); notify({ sev: "info", forAgency: true, forExec: vc.ejecutivo, forPO: vc.poCliente, text: `"${skuById(vc.skuId).name} · ${vc.campana}" se reprogramó (${dest.kind === "day" ? DAYS[dest.dia] : WEEKLBL[dest.sem]}) por una replanificación en el tablero.` }); }
   };
   const resetDia = (w) => { setItems((p) => p.map((x) => (x.sem === w ? { ...x, dia: null, dayPlan: null } : x))); fireToast("Plan reordenado por prioridad"); };
@@ -682,11 +707,12 @@ function Main({ onExit }) {
   };
   const myLines = isDirector ? LINEAS : LINEAS.filter((l) => items.some((i) => (audience === "agencia" ? i.ejecutivo : i.poCliente) === me && i.linea === l));
   const dashDisabled = !isDirector && lineaView === "General";
-  useEffect(() => { if (dashDisabled && (view === "dashboard" || view === "semana") && !isLab) setView("pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); if (audience === "cliente" && view === "miSemana") setView("pedidos"); if (isLab && !["lab", "semana", "dashboard", "miSemana", "retro"].includes(view)) setView("lab"); }, [dashDisabled, view, audience, isLab]);
+  useEffect(() => { if (dashDisabled && view === "dashboard" && !isLab) setView("pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); if (view === "personal" && !isDirector) setView(audience === "cliente" ? "pedidos" : "miSemana"); if (audience === "cliente" && view === "miSemana") setView("pedidos"); if (isLab && !["lab", "semana", "dashboard", "miSemana", "retro"].includes(view)) setView("lab"); }, [dashDisabled, view, audience, isLab]);
   useEffect(() => { if (isLab) { setLineaView("9Lab"); return; } if (!isDirector && myLines.length) setLineaView(myLines[0]); }, [audience, actingExec, actingPO, isLab]);
   const delegarLab = (it) => { set(it.id, { lab: true, delegBy: it.delegBy || it.ejecutivo, ejecutivo: LAB_EXEC, log: [...(it.log || []), logEntry(me, `Delegada a 9Lab (antes ${it.ejecutivo})`)] }); notify({ sev: "info", forAgency: true, text: `"${skuById(it.skuId).name} · ${it.campana}" delegada a 9Lab.` }); fireToast(`${it.id} delegada a 9Lab`); };
   const devolverLab = (it) => { const back = it.delegBy || EJECUTIVOS[0]; set(it.id, { lab: false, ejecutivo: back, delegBy: null, log: [...(it.log || []), logEntry(me, `Devuelta de 9Lab a ${back}`)] }); fireToast(`${it.id} devuelta a ${back}`); };
   const myReqs = moveReqs.filter((r) => (audience === "agencia" ? isDirector || r.exec === actingExec : isDirector || r.affectedPO === actingPO));
+  const myPlannerReqs = audience === "agencia" ? plannerReqs.filter((r) => isDirector || r.owner === actingExec) : [];
   const myNotifs = notifs.filter((n) => (audience === "agencia" ? (isDirector ? n.forAgency || !!n.forExec : n.forExec === actingExec) : (isDirector ? n.forClientAll || !!n.forPO : n.forClientAll || n.forPO === actingPO)));
   const markNotifsRead = () => { const ids = new Set(myNotifs.map((n) => n.id)); setNotifs((p) => p.map((n) => (ids.has(n.id) ? { ...n, read: true } : n))); };
   const approverName = me;
@@ -710,8 +736,8 @@ function Main({ onExit }) {
       <DemoBar audience={audience} setAudience={setAudience} actingExec={actingExec} setActingExec={setActingExec} actingPO={actingPO} setActingPO={setActingPO} isDirector={isDirector} onSimular={() => setCloseDay({ mandatory: true, tasks: dueToday })} />
       <div className="max-w-5xl mx-auto px-6 py-6">
         <Header audience={audience} setAudience={setAudience} week={week} setWeek={setWeek} lineaView={lineaView} setLineaView={setLineaView} onExit={onExit} onConfig={() => setCfg(true)} notifs={myNotifs} reqs={myReqs} onApprove={(r) => approveReq(r, approverName)} onReject={(r) => rejectReq(r, approverName)} onReadNotifs={markNotifsRead} hideWeek={view === "solicitudes" || view === "aprobaciones"} actingPO={actingPO} setActingPO={setActingPO} actingExec={actingExec} setActingExec={setActingExec} isDirector={isDirector} isLab={isLab} showCap={showCap} setShowCap={setShowCap} myLines={myLines} view={view} setView={setView} dashDisabled={dashDisabled} onCierre={() => setCloseDay({ mandatory: false, tasks: dueToday })} onSimular={() => setCloseDay({ mandatory: true, tasks: dueToday })} dueCount={dueToday.length} />
-        {(isLab || (!(! isDirector && lineaView === "General") && (isDirector || showCap))) && <CapStrip items={items} consByW={consByW} provByW={provByW} lineaView={lineaView} week={week} inLinea={inLinea} inWeek={inWeek} />}
-        <div className="flex items-center gap-2 mt-4" style={{ minHeight: 30 }}>
+        {view !== "personal" && (isLab || (!(! isDirector && lineaView === "General") && (isDirector || showCap))) && <CapStrip items={items} consByW={consByW} provByW={provByW} lineaView={lineaView} week={week} inLinea={inLinea} inWeek={inWeek} />}
+        {view !== "personal" && <div className="flex items-center gap-2 mt-4 mb-4" style={{ minHeight: 30 }}>
           {view === "solicitudes" || view === "aprobaciones" ? <span className="flex items-center gap-1.5 text-xs" style={{ color: "#a8a29e" }}><Files size={14} /> {view === "aprobaciones" ? "Aprobaciones · reingresos de todas las semanas" : "Solicitudes de todas las semanas"}</span> : <>
             <span className="flex items-center gap-1.5 text-xs flex-shrink-0" style={{ color: "#78716c" }}><CalendarDays size={14} /> Semana:</span>
             {(() => {
@@ -732,19 +758,18 @@ function Main({ onExit }) {
           {audience === "cliente" && view === "dashboard" && week < TODAY_WEEK && <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
             <button onClick={() => setReport(week)} title="Semana cerrada · descarga el reporte completo (dashboard + detalle por campaña) en PDF" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><FileText size={13} /> Descargar reporte (PDF)</button>
           </div>}
-        </div>
-        <div className="flex items-center gap-1 mt-4 mb-5 flex-nowrap overflow-x-auto rounded-2xl px-2 py-1.5" style={{ background: "#fff", border: "1px solid #ece9e3" }}>
+        </div>}
+        {view !== "personal" && view !== "dashboard" && <div className="flex items-center gap-1 mb-4 flex-nowrap overflow-x-auto rounded-2xl px-2 py-1.5" style={{ background: "#fff", border: "1px solid #ece9e3" }}>
           {audience === "agencia" && <NavBtn id="miSemana" icon={Sparkles} label="Mi semana" view={view} setView={setView} />}
           {audience === "cliente" && <NavBtn id="solicitudes" icon={Files} label="Pendientes" view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && !i.reentry && inScopePerson(i)).length || null} />}
-          {!isLab && <NavBtn id="pedidos" icon={ClipboardList} label={audience === "cliente" ? "Tareas en tráfico" : "Tareas"} view={view} setView={setView} />}
+          {!isLab && <NavBtn id="pedidos" icon={ClipboardList} label="Tareas" view={view} setView={setView} />}
           {audience === "agencia" && <NavBtn id="solicitudes" icon={Files} label="Solicitudes" view={view} setView={setView} badge={items.filter((i) => (i.estado === "revision" || i.estado === "provisional") && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="aprobaciones" icon={RefreshCcw} label="Aprobaciones" view={view} setView={setView} badge={items.filter((i) => i.reentry && ["pausada", "revision", "provisional"].includes(i.estado) && inScopePerson(i)).length || null} />}
           {audience === "cliente" && <NavBtn id="prioridades" icon={ListOrdered} label="Priorizaciones" view={view} setView={setView} />}
           {audience === "agencia" && <NavBtn id="lab" icon={UserPlus} label="9Lab" view={view} setView={setView} badge={items.filter((i) => i.lab && (isLab ? inScopePerson(i) : true)).length || null} />}
-          {!dashDisabled && <NavBtn id="semana" icon={CalendarDays} label={audience === "cliente" ? "Planificación" : "Planificador"} view={view} setView={setView} />}
+          <NavBtn id="semana" icon={CalendarDays} label={audience === "cliente" ? "Planificación" : "Planificador"} view={view} setView={setView} />
           <NavBtn id="retro" icon={Megaphone} label="Retroplanning" view={view} setView={setView} />
-          <NavBtn id="dashboard" icon={Gauge} label="Dashboard" view={view} setView={setView} disabled={dashDisabled} title={dashDisabled ? "El Dashboard depende de la capacidad de un segmento · no disponible en 'Todos mis segmentos'" : undefined} />
-        </div>
+        </div>}
 
         {audience === "agencia" && myReqs.length > 0 && (
           <Card style={{ padding: 0, marginBottom: 16, borderColor: "#fcd34d" }}>
@@ -763,23 +788,41 @@ function Main({ onExit }) {
             ))}</div>
           </Card>
         )}
+        {audience === "agencia" && myPlannerReqs.length > 0 && (
+          <Card style={{ padding: 0, marginBottom: 16, borderColor: "#bfdbfe" }}>
+            <div className="px-5 py-2.5 flex items-center gap-2" style={{ borderBottom: "1px solid #f0eee9", background: "#eff6ff" }}><CalendarDays size={15} color={BLUE} /><span style={{ fontWeight: 700, color: "#1e40af" }}>Solicitudes del tablero</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#dbeafe", color: "#1e40af", fontWeight: 700 }}>{myPlannerReqs.length}</span><span className="text-xs" style={{ color: "#a8a29e" }}>· otro ejecutivo quiere mover una tarea tuya</span></div>
+            <div>{myPlannerReqs.map((r, ri) => (
+              <div key={r.id} className="px-5 py-3 flex items-center justify-between flex-wrap gap-3" style={{ borderTop: ri ? "1px solid #f7f5f1" : "none" }}>
+                <div className="flex-1" style={{ minWidth: 240 }}>
+                  <div className="text-sm" style={{ fontWeight: 600 }}>{r.moverName} <span style={{ color: "#a8a29e", fontWeight: 400 }}>· {r.campana}</span></div>
+                  <div className="text-xs mt-0.5" style={{ color: "#78716c" }}>{r.by} pide moverla al <b>{DAYS[r.toDia]}</b> de {WEEKLBL[r.wk]}{r.victimName ? <span style={{ color: "#9f1239" }}> · reemplazando a {r.victimName}</span> : null} · {r.at}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => rejectPlannerReq(r, actingExec)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: "#f5f5f4", color: "#57534e", fontWeight: 600 }}><X size={12} /> Rechazar</button>
+                  <button onClick={() => approvePlannerReq(r, actingExec)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><Check size={12} /> Aprobar y mover</button>
+                </div>
+              </div>
+            ))}</div>
+          </Card>
+        )}
 
         {view === "miSemana" && audience === "agencia" && <MiSemana items={items} ptasks={ptasks} onAddPtask={addPtask} onTogglePtask={togglePtask} onRemovePtask={removePtask} me={me} isDirector={isDirector} isLab={isLab} inScopePerson={inScopePerson} setView={setView} onOpenCor={openCor} />}
+        {view === "personal" && isDirector && <Personal items={items} audience={audience} onReassign={reassignOwner} />}
         {view === "retro" && <Retro items={items} inLinea={inLinea} inScopePerson={inScopePerson} audience={audience} setView={setView} />}
         {view === "dashboard" && <Dashboard consByW={consByW} provByW={provByW} items={items} audience={audience} lineaView={lineaView} setLineaView={setLineaView} week={week} savedHours={savedHours} inScopePerson={inScopePerson} isDirector={isDirector} me={me} showCap={showCap} />}
         {view === "pedidos" && <Pedidos {...pedidosProps} mode="tareas" />}
         {view === "solicitudes" && <Pedidos {...pedidosProps} mode="solicitudes" />}
         {view === "aprobaciones" && audience === "cliente" && <Pedidos {...pedidosProps} mode="aprobaciones" />}
         {view === "lab" && audience === "agencia" && <Pedidos {...pedidosProps} mode="lab" />}
-        {view === "prioridades" && audience === "cliente" && <Prioridades items={items} consAll={consAll} inWeek={inWeek} inLinea={inLinea} campOrder={campOrder} onMoveItem={moveItem} onMoveCamp={moveCamp} onSetPrio={setPrioridad} week={week} actingPO={actingPO} setActingPO={setActingPO} onAdvance={advanceItem} onRequest={requestAdvance} onDelay={delayItem} />}
-        {view === "semana" && <SemanaView items={items} audience={audience} inLinea={inLinea} lineaView={lineaView} campOrder={campOrder} week={week} onOpenCor={openCor} onCopy={copyLink} onMoveDia={moveDia} onReset={resetDia} onOpenSplit={setSplitDays} onReplace={plannerReplace} />}
+        {view === "prioridades" && audience === "cliente" && <Prioridades items={items} consAll={consAll} inWeek={inWeek} campOrder={campOrder} onReorderItem={reorderItem} onReorderCamp={reorderCamp} onSetPrio={setPrioridad} week={week} actingPO={actingPO} onAdvance={advanceItem} onRequest={requestAdvance} onDelay={delayItem} />}
+        {view === "semana" && <SemanaView items={items} audience={audience} inLinea={inLinea} lineaView={lineaView} campOrder={campOrder} week={week} me={me} isDirector={isDirector} onOpenCor={openCor} onCopy={copyLink} onMoveDia={moveDia} onReset={resetDia} onOpenSplit={setSplitDays} onReplace={plannerReplace} onRequestMove={requestPlannerMove} />}
         {view === "ingreso" && audience === "agencia" && <Ingreso onAdd={addItems} week={week} actingExec={actingExec} isDirector={isDirector} lineaView={lineaView} campaigns={[...new Map(items.filter((it) => it.campana).map((it) => [it.campana, { name: it.campana, marca: it.marca, linea: it.linea, fAire: it.fAire }])).values()]} />}
       </div>
 
       {report != null && <ClosedWeekReport week={report} items={items} inScopePerson={inScopePerson} onClose={() => setReport(null)} />}
       {decision && <DecisionModal decision={decision} consAll={consAll} onClose={() => setDecision(null)} onConfirm={confirmDecision} onSplit={confirmSplit} />}
       {editing && <EditModal item={editing} onClose={() => setEditing(null)} onSave={(u) => { set(u.id, u); setEditing(null); fireToast(`${u.id} actualizado`); }} />}
-      {corModal && (() => { const live = items.find((x) => x.id === corModal.it.id) || corModal.it; return <CorTaskModal item={live} side={corModal.side} onClose={() => setCorModal(null)} onToast={fireToast} onCopy={copyLink} onRetro={(it) => { setCorModal(null); setRetroFor(it); }} onAddMember={corAddMember} onRemoveMember={corRemoveMember} />; })()}
+      {corModal && (() => { const live = items.find((x) => x.id === corModal.it.id) || corModal.it; return <CorTaskModal item={live} side={corModal.side} onClose={() => setCorModal(null)} onToast={fireToast} onCopy={copyLink} onRetro={(it) => { setCorModal(null); setRetroFor(it); }} onAddMember={corAddMember} onRemoveMember={corRemoveMember} audience={audience} onReassign={reassignOwner} />; })()}
       {retroFor && <RetrabajoModal item={retroFor} onClose={() => setRetroFor(null)} onCreate={createRetro} />}
       {splitDays && <DaySplitModal item={splitDays} onClose={() => setSplitDays(null)} onSave={setDayPlan} />}
       {cfg && <ConfigModal onClose={() => setCfg(false)} />}
@@ -820,8 +863,12 @@ function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView,
         </div>
       </div>
       <div className="flex items-center gap-3 flex-wrap">
-        {!isLab && <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><Layers size={14} /> Segmento:</span><select value={lineaView} onChange={(e) => setLineaView(e.target.value)} title={isDirector ? "El Director ve todos los segmentos o uno a la vez" : "Tus segmentos de negocio · uno a la vez o todos tus segmentos juntos"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600 }}>{isDirector ? <><option value="General">General (todos)</option>{LINEAS.map((l) => <option key={l}>{l}</option>)}</> : <>{myLines.length > 1 && <option value="General">Todos mis segmentos</option>}{myLines.map((l) => <option key={l}>{l}</option>)}</>}</select></div>}
+        {!isLab && <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><Layers size={14} /> Segmento:</span><select value={lineaView} disabled={view === "personal"} onChange={(e) => setLineaView(e.target.value)} title={view === "personal" ? "Bloqueado en Gestión de equipo (vista de todos los segmentos)" : isDirector ? "El Director ve todos los segmentos o uno a la vez" : "Tus segmentos de negocio · uno a la vez o todos tus segmentos juntos"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600, opacity: view === "personal" ? 0.5 : 1, cursor: view === "personal" ? "not-allowed" : "pointer" }}>{isDirector ? <><option value="General">General (todos)</option>{LINEAS.map((l) => <option key={l}>{l}</option>)}</> : <>{myLines.length > 1 && <option value="General">Todos mis segmentos</option>}{myLines.map((l) => <option key={l}>{l}</option>)}</>}</select></div>}
         {isLab && <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={14} /> Agencia interna 9Lab · capacidad propia</span>}
+        <div className="h-4" style={{ width: 1, background: "#d6d3d1" }} />
+        <NavBtn id="dashboard" icon={Gauge} label="Dashboard" view={view} setView={setView} disabled={dashDisabled} title={dashDisabled ? "El Dashboard depende de la capacidad de un segmento · no disponible en 'Todos mis segmentos'" : undefined} />
+        {isDirector && <NavBtn id="personal" icon={Users} label="Gestión de equipo" view={view} setView={setView} />}
+        {(() => { const camp = view !== "dashboard" && view !== "personal"; const defOp = isLab ? "lab" : audience === "cliente" ? "solicitudes" : "miSemana"; return <button onClick={() => { if (!camp) setView(defOp); }} title="Tareas, solicitudes y planificación de las campañas" className="flex items-center gap-2 px-4 py-2 rounded-full text-sm flex-shrink-0 whitespace-nowrap" style={{ background: camp ? INK : "transparent", color: camp ? PAPER : "#57534e", fontWeight: camp ? 600 : 500 }}><Megaphone size={16} /> Campañas</button>; })()}
         {!isLab && !isDirector && (lineaView === "General" ? <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: "#faf9f6", border: "1px solid #ece9e3", color: "#a8a29e", fontWeight: 600 }} title="La capacidad operativa no aplica al combinar varios segmentos"><Gauge size={14} /> Capacidad no disponible en vista combinada</span> : <button onClick={() => setShowCap((s) => !s)} className="flex items-center gap-2 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: showCap ? "#f0fdfa" : "#fff", border: `1px solid ${showCap ? "#bae6e0" : "#e7e5e4"}`, color: showCap ? "#115e59" : "#57534e", fontWeight: 600 }}><Gauge size={14} /> {showCap ? "Ocultar capacidad operativa" : "Ver capacidad operativa"} <ChevronDown size={13} style={{ transform: showCap ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></button>)}
       </div>
     </div>
@@ -959,14 +1006,16 @@ function ReasonBubbleChart({ data }) {
 }
 
 function Retro({ items, inLinea, inScopePerson, audience, setView }) {
-  const [span, setSpan] = useState(8);
-  const [fromW, setFromW] = useState(Math.max(MINWEEK, TODAY_WEEK - 1));
+  const [fromDate, setFromDate] = useState(iso(TODAY));
+  const [toDate, setToDate] = useState(iso(addDays(TODAY, 30)));
+  const weekIdxOf = (s) => { const d = new Date(s + "T00:00:00"); const wd = (d.getDay() + 6) % 7; const mon = addDays(d, -wd); return Math.round((mon - MONDAY) / 6048e5); };
+  const fromW = Math.max(MINWEEK, Math.min(MAXWEEK, weekIdxOf(fromDate)));
   const [showSol, setShowSol] = useState(true);
   const [open, setOpen] = useState({});
   const [expOpen, setExpOpen] = useState(false);
   const exportCamp = (c) => { setOpen({ [c]: true }); setExpOpen(false); if (typeof window !== "undefined") setTimeout(() => window.print(), 350); };
   const toggle = (c) => setOpen((p) => ({ ...p, [c]: !p[c] }));
-  const toW = Math.min(MAXWEEK, fromW + span - 1);
+  const toW = Math.max(fromW, Math.min(MAXWEEK, weekIdxOf(toDate)));
   const days = []; for (let w = fromW; w <= toW; w++) for (let di = 0; di < 5; di++) days.push({ w, di, date: weekDays(w)[di] });
   const N = days.length;
   const absOf = (w, di) => (w - fromW) * 5 + di;
@@ -985,7 +1034,6 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
   const tpl = `200px repeat(${N}, minmax(30px, 1fr))`;
   const SOL_BG = "repeating-linear-gradient(45deg,#bfdbfe,#bfdbfe 3px,#eff6ff 3px,#eff6ff 6px)";
   const Dot = ({ c, dash }) => <span style={{ width: 12, height: 12, borderRadius: 3, background: dash ? SOL_BG : c, border: dash ? "1px dashed #1d4ed8" : "none", display: "inline-block" }} />;
-  const winLbl = `${weekStart(fromW).getDate()} ${MONTHS[weekStart(fromW).getMonth()]} – ${addDays(weekStart(toW), 4).getDate()} ${MONTHS[addDays(weekStart(toW), 4).getMonth()]}`;
   const ctrlBtn = { background: "#fff", border: "1px solid #e7e5e4", color: "#57534e", fontWeight: 600 };
   return (
     <div>
@@ -993,24 +1041,24 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
         <div style={{ ...serif, fontSize: 24, fontWeight: 700, color: INK }}>Retroplanning</div>
         <button onClick={() => setExpOpen(true)} title="Exporta el retroplanning de una campaña a PDF" className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1" style={ctrlBtn}><PackageCheck size={13} /> Exportar / Imprimir (PDF)</button>
       </div>
-      <p className="text-sm mb-3" style={{ color: "#78716c" }}>Cada entregable va desde su <b>ingreso al tráfico</b> hasta su <b>fecha al aire</b>; si reprogramas la tarea, su inicio se mueve. Las barras que <b style={{ color: "#9f1239" }}>cruzan la fecha al aire</b> salen en rojo. Mueve la ventana para ver más adelante.</p>
+      <NoteBox className="mb-4">Cada entregable va desde su <b>ingreso al tráfico</b> hasta su <b>fecha de entrega</b>; si reprogramas la tarea, su inicio se mueve. Las barras que <b style={{ color: "#9f1239" }}>cruzan la fecha de entrega</b> salen en rojo. Elige el rango de fechas (inicio y fin) para enfocar lo que quieres ver.</NoteBox>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <button onClick={() => setFromW(Math.max(MINWEEK, fromW - 2))} title="Atrás" className="rounded-full flex items-center justify-center" style={{ width: 32, height: 32, ...ctrlBtn }}><ChevronRight size={16} style={{ transform: "rotate(180deg)" }} /></button>
-        <span className="text-sm px-3 py-1.5 rounded-full" style={{ background: "#faf9f6", border: "1px solid #ece9e3", color: INK, fontWeight: 600 }}>{winLbl}</span>
-        <button onClick={() => setFromW(Math.min(MAXWEEK - 1, fromW + 2))} title="Adelante" className="rounded-full flex items-center justify-center" style={{ width: 32, height: 32, ...ctrlBtn }}><ChevronRight size={16} /></button>
-        <button onClick={() => setFromW(Math.max(MINWEEK, TODAY_WEEK - 1))} className="text-xs px-3 py-1.5 rounded-full" style={ctrlBtn}>Hoy</button>
-        <div className="flex items-center gap-1 ml-1">{[4, 8, 12].map((sv) => <button key={sv} onClick={() => setSpan(sv)} className="text-xs px-2.5 py-1.5 rounded-full" style={{ background: span === sv ? INK : "#fff", border: "1px solid " + (span === sv ? INK : "#e7e5e4"), color: span === sv ? PAPER : "#57534e", fontWeight: 600 }}>{sv} sem</button>)}</div>
+        <span className="text-xs flex items-center gap-1.5" style={{ color: "#78716c", fontWeight: 600 }}><CalendarDays size={14} /> Desde</span>
+        <input type="date" value={fromDate} min={iso(weekStart(MINWEEK))} max={toDate} onChange={(e) => e.target.value && setFromDate(e.target.value)} style={{ ...dateInput, padding: "6px 9px", fontWeight: 600 }} />
+        <span className="text-xs" style={{ color: "#78716c", fontWeight: 600 }}>Hasta</span>
+        <input type="date" value={toDate} min={fromDate} max={iso(addDays(weekStart(MAXWEEK), 4))} onChange={(e) => e.target.value && setToDate(e.target.value)} style={{ ...dateInput, padding: "6px 9px", fontWeight: 600 }} />
+        <button onClick={() => { setFromDate(iso(TODAY)); setToDate(iso(addDays(TODAY, 30))); }} title="Volver al rango por defecto" className="text-xs px-3 py-1.5 rounded-full" style={ctrlBtn}>Hoy + 1 mes</button>
         <button onClick={() => setShowSol(!showSol)} className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1 ml-auto" style={{ background: showSol ? "#eff6ff" : "#fff", border: "1px solid " + (showSol ? "#bfdbfe" : "#e7e5e4"), color: showSol ? "#1e40af" : "#57534e", fontWeight: 600 }}><Files size={13} /> {showSol ? "Ocultar solicitudes" : "Ver solicitudes"}</button>
       </div>
       <div className="flex items-center gap-4 mb-4 flex-wrap text-xs" style={{ color: "#57534e" }}>
         <span className="flex items-center gap-1.5"><Dot c={HEALTH.ok.bar} /> En regla</span>
         <span className="flex items-center gap-1.5"><Dot c={HEALTH.risk.bar} /> En riesgo</span>
-        <span className="flex items-center gap-1.5"><Dot c={HEALTH.late.bar} /> Cruza la fecha al aire</span>
+        <span className="flex items-center gap-1.5"><Dot c={HEALTH.late.bar} /> Cruza la fecha de entrega</span>
         <span className="flex items-center gap-1.5"><Dot c="#34d399" /> Finalizada</span>
         <span className="flex items-center gap-1.5"><Dot dash /> Solicitud (por aprobar)</span>
-        <span className="flex items-center gap-1.5"><span style={{ width: 12, height: 12, borderRadius: 3, outline: `2px solid ${INK}`, outlineOffset: -2, display: "inline-block" }} /> Día de la fecha al aire</span>
+        <span className="flex items-center gap-1.5"><span style={{ width: 12, height: 12, borderRadius: 3, outline: `2px solid ${INK}`, outlineOffset: -2, display: "inline-block" }} /> Día de la fecha de entrega</span>
       </div>
-      {camps.length === 0 && <Card><div className="text-sm text-center" style={{ color: "#a8a29e" }}>No hay entregables en esta ventana. Mueve las fechas o amplía las semanas.</div></Card>}
+      {camps.length === 0 && <Card><div className="text-sm text-center" style={{ color: "#a8a29e" }}>No hay entregables en este rango de fechas. Ajusta el inicio o el fin.</div></Card>}
       <div className="flex flex-col gap-4">
         {camps.map((camp) => {
           const g = visible.filter((i) => i.campana === camp).sort((a, b) => a.fAire.localeCompare(b.fAire));
@@ -1022,7 +1070,7 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
                 <Megaphone size={15} color={BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span>
                 <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: ch.chip, color: ch.text, fontWeight: 600 }}><CircleDot size={10} /> {ch.label}</span>
                 <span className="text-xs" style={{ color: "#a8a29e" }}>{g0.marca} · {catOf(camp)} · {g0.linea} · {g.length} entregables</span>
-                {lateN > 0 && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ml-auto" style={{ background: "#fee2e2", color: "#9f1239", fontWeight: 600 }}><AlertTriangle size={11} /> {lateN} cruzan la fecha al aire · visto bueno cliente</span>}
+                {lateN > 0 && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ml-auto" style={{ background: "#fee2e2", color: "#9f1239", fontWeight: 600 }}><AlertTriangle size={11} /> {lateN} cruzan la fecha de entrega · visto bueno cliente</span>}
               </div>
               {open[camp] && <div style={{ overflowX: "auto" }}>
                 <div style={{ minWidth: 200 + N * 30 }}>
@@ -1038,8 +1086,8 @@ function Retro({ items, inLinea, inScopePerson, audience, setView }) {
                     const col = done ? "#34d399" : (HEALTH[taskRisk(it)] || HEALTH.ok).bar;
                     return (
                       <div key={it.id} style={{ display: "grid", gridTemplateColumns: tpl, alignItems: "center", borderTop: "1px solid #f7f5f1" }}>
-                        <div className="px-3 py-1.5" style={{ minWidth: 0 }}><div className="text-xs truncate" style={{ fontWeight: 600, color: INK }}>{skuById(it.skuId).name} <span style={{ color: "#a8a29e", fontWeight: 400 }}>×{it.cantidad}</span></div><div className="text-xs truncate" style={{ color: "#a8a29e" }}>al aire {fmt(it.fAire)}{it.lab ? " · 9Lab" : ""}{solq ? " · " : ""}{solq && <span style={{ color: "#1e40af", fontWeight: 600 }}>por aprobar</span>}</div></div>
-                        {days.map((d, k) => { const on = k >= bs && k <= be, isAir = k === airAbs; return <div key={k} style={{ padding: "0 1px", borderLeft: d.di === 0 ? "1px solid #f0eee9" : "none", background: k === todayAbs ? "#f0fdfa" : "transparent" }}><div title={isAir ? `Fecha al aire: ${fmt(it.fAire)}` : undefined} style={{ height: 18, background: on ? (solq ? SOL_BG : col) : "transparent", borderTopLeftRadius: k === bs ? 5 : 0, borderBottomLeftRadius: k === bs ? 5 : 0, borderTopRightRadius: k === be ? 5 : 0, borderBottomRightRadius: k === be ? 5 : 0, borderTop: on && solq ? "1px dashed #1d4ed8" : "none", borderBottom: on && solq ? "1px dashed #1d4ed8" : "none", outline: isAir ? `2px solid ${INK}` : "none", outlineOffset: -2 }} /></div>; })}
+                        <div className="px-3 py-1.5" style={{ minWidth: 0 }}><div className="text-xs truncate" style={{ fontWeight: 600, color: INK }}>{skuById(it.skuId).name} <span style={{ color: "#a8a29e", fontWeight: 400 }}>×{it.cantidad}</span></div><div className="text-xs truncate" style={{ color: "#a8a29e" }}>entrega {fmt(it.fAire)}{it.lab ? " · 9Lab" : ""}{solq ? " · " : ""}{solq && <span style={{ color: "#1e40af", fontWeight: 600 }}>por aprobar</span>}</div></div>
+                        {days.map((d, k) => { const on = k >= bs && k <= be, isAir = k === airAbs; return <div key={k} style={{ padding: "0 1px", borderLeft: d.di === 0 ? "1px solid #f0eee9" : "none", background: k === todayAbs ? "#f0fdfa" : "transparent" }}><div title={isAir ? `Fecha de entrega: ${fmt(it.fAire)}` : undefined} style={{ height: 18, background: on ? (solq ? SOL_BG : col) : "transparent", borderTopLeftRadius: k === bs ? 5 : 0, borderBottomLeftRadius: k === bs ? 5 : 0, borderTopRightRadius: k === be ? 5 : 0, borderBottomRightRadius: k === be ? 5 : 0, borderTop: on && solq ? "1px dashed #1d4ed8" : "none", borderBottom: on && solq ? "1px dashed #1d4ed8" : "none", outline: isAir ? `2px solid ${INK}` : "none", outlineOffset: -2 }} /></div>; })}
                       </div>
                     );
                   })}
@@ -1126,6 +1174,80 @@ function ClosedWeekReport({ week, items, inScopePerson, onClose }) {
   );
 }
 
+function NoteBox({ children, className = "" }) {
+  const [show, setShow] = useState(false);
+  if (!show) return <button onClick={() => setShow(true)} className={`text-xs flex items-center gap-1.5 rounded-full px-3 py-1.5 ${className}`} style={{ background: "#eff6ff", border: "1px solid #dbeafe", color: "#1e40af", fontWeight: 600 }}><MessageSquare size={13} /> Ver nota</button>;
+  return <div className={`rounded-xl px-4 py-3 flex items-start gap-2.5 ${className}`} style={{ background: "#eff6ff", border: "1px solid #dbeafe" }}><MessageSquare size={15} color={BLUE} style={{ marginTop: 2, flexShrink: 0 }} /><div className="text-sm" style={{ color: "#1e40af", lineHeight: 1.55, flex: 1 }}>{children}</div><button onClick={() => setShow(false)} title="Ocultar nota" style={{ color: "#1e40af", flexShrink: 0 }}><X size={15} /></button></div>;
+}
+function Personal({ items, audience, onReassign }) {
+  const isAg = audience === "agencia";
+  const people = isAg ? EJECUTIVOS : POS;
+  const ownerOf = (it) => (isAg ? agencyOwner(it) : it.poCliente);
+  const live = items.filter((i) => !i.archivado && i.estado !== "rechazado");
+  const [fPerson, setFPerson] = useState("Todos");
+  const [fCamp, setFCamp] = useState("Todas");
+  const [bulkTo, setBulkTo] = useState("");
+  const [open, setOpen] = useState({});
+  const toggle = (c) => setOpen((o) => ({ ...o, [c]: !o[c] }));
+  const personPool = fPerson === "Todos" ? live : live.filter((i) => ownerOf(i) === fPerson);
+  const camps = [...new Set(personPool.map((i) => i.campana))].sort();
+  const effCamp = camps.includes(fCamp) ? fCamp : "Todas";
+  const shown = personPool.filter((i) => effCamp === "Todas" || i.campana === effCamp);
+  const shownCamps = [...new Set(shown.map((i) => i.campana))].sort();
+  const sel = { ...dateInput, padding: "6px 9px", fontWeight: 600 };
+  const EST = { aceptado: { t: "En tráfico", c: "#115e59", bg: "#ccfbf1" }, revision: { t: "Solicitud", c: "#1e40af", bg: "#eff6ff" }, provisional: { t: "Provisional", c: "#92400e", bg: "#fef3c7" }, pausada: { t: "Suspendida", c: "#9f1239", bg: "#fee2e2" } };
+  const stOf = (i) => EST[i.estado] || { t: i.estado, c: "#57534e", bg: "#f0eee9" };
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3"><Users size={20} color={INK} /><span style={{ ...serif, fontSize: 24, fontWeight: 700, color: INK }}>Gestión de equipo</span></div>
+      <NoteBox className="mb-5">Reasigna el owner de las tareas — para ausencias, vacaciones, renuncias o apoyo entre {isAg ? "ejecutivos" : "POs"}. Quien recibe la tarea se agrega como miembro en COR (cliente y agencia) y el anterior conserva el acceso. Muestra todas las tareas activas y solicitudes, sin fechas.</NoteBox>
+      <Card style={{ padding: 0 }}>
+        <div className="px-4 py-3 flex items-center gap-3 flex-wrap" style={{ borderBottom: "1px solid #f0eee9" }}>
+          <div className="flex items-center gap-1.5"><span className="text-xs" style={{ color: "#78716c", fontWeight: 600 }}>{isAg ? "Ejecutivo" : "PO"}</span><select value={fPerson} onChange={(e) => { setFPerson(e.target.value); setFCamp("Todas"); }} style={sel}><option>Todos</option>{people.map((n) => <option key={n}>{n}</option>)}</select></div>
+          <div className="flex items-center gap-1.5"><span className="text-xs" style={{ color: "#78716c", fontWeight: 600 }}>Campaña</span><select value={effCamp} onChange={(e) => setFCamp(e.target.value)} style={sel}><option>Todas</option>{camps.map((c) => <option key={c}>{c}</option>)}</select></div>
+          <div className="ml-auto flex items-center gap-3">
+            {shownCamps.length > 0 && <button onClick={() => { const all = shownCamps.every((c) => open[c]); const next = {}; shownCamps.forEach((c) => (next[c] = !all)); setOpen((o) => ({ ...o, ...next })); }} className="text-xs flex items-center gap-1" style={{ color: BRAND, fontWeight: 600 }}>{shownCamps.every((c) => open[c]) ? "Colapsar todas" : "Expandir todas"}</button>}
+            <span className="text-xs" style={{ color: "#a8a29e" }}>{shown.length} tareas · {shownCamps.length} campañas</span>
+          </div>
+        </div>
+        {fPerson !== "Todos" && shown.length > 0 && (
+          <div className="px-4 py-3 flex items-center gap-2 flex-wrap" style={{ borderBottom: "1px solid #f0eee9", background: "#faf9f6" }}>
+            <span className="text-xs" style={{ color: INK, fontWeight: 600 }}>Reasignar las {shown.length} tareas{effCamp !== "Todas" ? ` de ${effCamp}` : ""} de {fPerson} a:</span>
+            <select value={bulkTo} onChange={(e) => setBulkTo(e.target.value)} style={sel}><option value="">Elegir {isAg ? "ejecutivo" : "PO"}…</option>{people.filter((n) => n !== fPerson).map((n) => <option key={n}>{n}</option>)}</select>
+            <button disabled={!bulkTo} onClick={() => { onReassign(shown.map((i) => i.id), audience, bulkTo); setFPerson(bulkTo); setBulkTo(""); }} className="text-xs px-3 py-2 rounded-full flex items-center gap-1" style={{ background: bulkTo ? BRAND : "#e7e5e4", color: bulkTo ? "#fff" : "#a8a29e", fontWeight: 600 }}><ArrowLeftRight size={13} /> Reasignar todas</button>
+          </div>
+        )}
+        <div className="p-3 flex flex-col gap-3">
+          {shownCamps.length === 0 ? <div className="text-xs text-center py-6" style={{ color: "#a8a29e" }}>Sin tareas con estos filtros.</div> : shownCamps.map((camp) => {
+            const g = shown.filter((i) => i.campana === camp).sort((a, b) => a.fAire.localeCompare(b.fAire)), g0 = g[0];
+            return (
+              <div key={camp} className="rounded-xl" style={{ border: "1px solid #f0eee9", overflow: "hidden" }}>
+                <div className="px-3 py-2.5 flex items-center justify-between gap-2 flex-wrap" style={{ background: "#faf9f6", borderBottom: open[camp] ? "1px solid #f0eee9" : "none" }}>
+                  <button onClick={() => toggle(camp)} className="flex items-center gap-2 flex-wrap" style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                    {open[camp] ? <ChevronDown size={15} color="#a8a29e" /> : <ChevronRight size={15} color="#a8a29e" />}
+                    <Megaphone size={13} color={BRAND} /><span className="text-sm" style={{ fontWeight: 700, color: INK }}>{camp}</span>
+                    <span className="text-xs" style={{ color: "#a8a29e" }}>{g0.marca} · {catOf(camp)} · {g0.linea} · {g.length} entregables</span>
+                  </button>
+                  <select value="" onChange={(e) => { if (e.target.value) onReassign(g.map((i) => i.id), audience, e.target.value); }} title="Reasignar toda la campaña a una persona" style={{ ...dateInput, padding: "4px 8px", fontWeight: 600, color: BRAND }}><option value="">Reasignar campaña a…</option>{people.map((n) => <option key={n}>{n}</option>)}</select>
+                </div>
+                {open[camp] && <div>{g.map((it, k) => { const st = stOf(it); return (
+                  <div key={it.id} className="px-3 py-2.5 flex items-center justify-between gap-3" style={{ borderTop: k ? "1px solid #f7f5f1" : "none" }}>
+                    <div style={{ minWidth: 0 }}><div className="text-sm truncate" style={{ fontWeight: 600, color: INK }}>{skuById(it.skuId).name} <span style={{ color: "#a8a29e", fontWeight: 400 }}>×{it.cantidad}</span></div><div className="text-xs truncate" style={{ color: "#a8a29e" }}>{isAg ? "Ej." : "PO"} {ownerOf(it) || "—"}{it.lab ? " · 9Lab" : ""}</div></div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: st.bg, color: st.c, fontWeight: 600 }}>{st.t}</span>
+                      <select value="" onChange={(e) => { if (e.target.value) onReassign([it.id], audience, e.target.value); }} title="Reasignar esta tarea" style={{ ...dateInput, padding: "5px 8px", fontWeight: 600, color: BRAND }}><option value="">Reasignar a…</option>{people.filter((n) => n !== ownerOf(it)).map((n) => <option key={n}>{n}</option>)}</select>
+                    </div>
+                  </div>
+                ); })}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me, isDirector, isLab, inScopePerson, setView, onOpenCor }) {
   const mine = items.filter((i) => !i.archivado && inScopePerson(i));
   const riesgo = mine.filter((i) => i.estado === "aceptado" && ["late", "risk"].includes(taskRisk(i))).sort((a, b) => a.fAire.localeCompare(b.fAire));
@@ -1162,7 +1284,7 @@ function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me,
       <div className="flex items-end justify-between flex-wrap gap-2 mb-1"><div style={{ ...serif, fontSize: 24, fontWeight: 700, color: INK }}>Mi semana</div><div className="text-xs" style={{ color: "#a8a29e" }}>{isLab ? "Agencia interna 9Lab" : me} · {DAYS[TODAY_IDX]} {today.getDate()} {MONTHS[today.getMonth()]}</div></div>
       <p className="text-sm mb-4" style={{ color: "#78716c" }}>Tu centro de control: lo urgente, lo que vence, lo que espera al cliente y tus pendientes.</p>
       <div className="flex items-stretch gap-3 mb-4 flex-wrap">
-        <KPI n={riesgo.length} label="En riesgo de fecha al aire" color="#9f1239" bg="#fff5f5" target="retro" />
+        <KPI n={riesgo.length} label="En riesgo de fecha de entrega" color="#9f1239" bg="#fff5f5" target="retro" />
         <KPI n={vence.length} label="Vence esta semana" color="#92400e" bg="#fffbeb" target="semana" />
         <KPI n={espera.length} label="Espera al cliente" color="#1e40af" bg="#eff6ff" target="solicitudes" />
         <KPI n={myPt.filter((t) => !t.done).length} label="Mis pendientes" color={INK} bg="#faf9f6" />
@@ -1204,7 +1326,7 @@ function MiSemana({ items, ptasks, onAddPtask, onTogglePtask, onRemovePtask, me,
         </div>
       </Card>
       <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-        <ListCard icon={AlertTriangle} color="#be123c" title="En riesgo de fecha al aire" arr={riesgo} emptyText="Nada en riesgo. Vas al día." target="retro" />
+        <ListCard icon={AlertTriangle} color="#be123c" title="En riesgo de fecha de entrega" arr={riesgo} emptyText="Nada en riesgo. Vas al día." target="retro" />
         <ListCard icon={Clock} color="#d97706" title="Vence esta semana" arr={vence} emptyText="Sin entregas esta semana." target="semana" />
         {!isLab && <ListCard icon={RefreshCcw} color={BLUE} title="Espera decisión del cliente" arr={espera} emptyText="Nada esperando al cliente." target="solicitudes" />}
       </div>
@@ -1258,7 +1380,7 @@ function Dashboard({ consByW, provByW, items, audience, lineaView, setLineaView,
   const creLoad = ROLES.map((r) => { const c = scope.reduce((a, l) => a + consByW[l][r.id], 0), cp = Math.round(scope.reduce((a, l) => a + CAP[l][r.id], 0) * cf), pct = cp ? Math.round((c / cp) * 100) : 0; const susp = suspended.filter((i) => itemHours(i).per[r.id] > 0).length; return { ...r, person: CREATIVOS[r.id], c, cp, pct, st: statusColor(pct), susp }; });
   const roleOver = creLoad.filter((r) => r.pct > 100);
   const alerts = [
-    { k: "venc", n: overdue.length, c: campOf(overdue).length, Icon: AlertTriangle, col: "#9f1239", bg: "#fef2f2", t: "Deadlines vencidos", d: "tareas pasadas de fecha al aire sin finalizar", items: overdue },
+    { k: "venc", n: overdue.length, c: campOf(overdue).length, Icon: AlertTriangle, col: "#9f1239", bg: "#fef2f2", t: "Deadlines vencidos", d: "tareas pasadas de fecha de entrega sin finalizar", items: overdue },
     { k: "riesgo", n: dueSoon.length, c: campOf(dueSoon).length, Icon: Hourglass, col: "#92400e", bg: "#fffbeb", t: "En riesgo (≤ 2 días)", d: "vencen pronto y van por debajo del 80%", items: dueSoon },
     { k: "nofin", n: reprog.length, c: campOf(reprog).length, Icon: Clock, col: "#9f1239", bg: "#fef2f2", t: "No finalizadas a tiempo", d: "reprogramadas en el cierre del día · revisa los motivos abajo", items: reprog },
     { k: "susp", n: suspended.length, c: campOf(suspended).length, Icon: Pause, col: "#92400e", bg: "#fffbeb", t: "Tareas suspendidas", d: "fuera del plan · esperan que el cliente las reactive", items: suspended },
@@ -1298,7 +1420,7 @@ function Dashboard({ consByW, provByW, items, audience, lineaView, setLineaView,
               <div key={i.id} className="flex items-center gap-3 rounded-xl px-3 py-2 flex-wrap" style={{ background: "#faf9f6", border: "1px solid #ece9e3" }}>
                 <div className="flex-1" style={{ minWidth: 160 }}>
                   <div className="text-sm" style={{ fontWeight: 600 }}>{skuById(i.skuId).name} <span style={{ color: "#a8a29e", fontWeight: 400 }}>· {i.campana}</span></div>
-                  <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: "#a8a29e" }}><Calendar size={11} /> al aire {fmt(i.fAire)}</div>
+                  <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: "#a8a29e" }}><Calendar size={11} /> entrega {fmt(i.fAire)}</div>
                 </div>
                 <div className="flex items-center gap-2" style={{ width: 130 }}><div className="rounded-full overflow-hidden flex-1" style={{ background: "#f0eee9", height: 7 }}><div style={{ width: i.avance + "%", height: "100%", background: BRAND }} /></div><span className="text-xs" style={{ color: "#57534e", fontWeight: 600, width: 30 }}>{i.avance}%</span></div>
                 {flag && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: flag.bg, color: flag.c, fontWeight: 600 }}>{flag.t}</span>}
@@ -1461,7 +1583,7 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
   if (audience === "cliente" && fPo !== "todos") list = list.filter((i) => i.poCliente === fPo);
   if (solLike && fEst !== "todos") list = list.filter((i) => i.estado === fEst);
   const arch = !solLike && fArch === "archivadas";
-  const crank = (camp) => { const g = list.find((i) => i.campana === camp); const arr = campOrder[g.linea] || []; const r = arr.indexOf(camp); return r < 0 ? 999 : r; };
+  const crank = (camp) => { const r = campOrder.indexOf(camp); return r < 0 ? 999 : r; };
   const campDate = (camp) => list.filter((i) => i.campana === camp).reduce((m, i) => (i.fAire < m ? i.fAire : m), "9999-99-99");
   const camps = [...new Set(list.map((i) => i.campana))].sort((a, b) => (solLike ? (fSort === "antiguas" ? campDate(a).localeCompare(campDate(b)) : campDate(b).localeCompare(campDate(a))) : crank(a) - crank(b)));
   const isCampOpen = (c) => open[c] !== false;
@@ -1478,18 +1600,21 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
         {solLike && <Sel value={fSort} set={setFSort} label="Orden" opts={[{ v: "antiguas", t: "Más antiguas primero" }, { v: "recientes", t: "Más recientes primero" }]} />}
         {sol && <Sel value={fEst} set={setFEst} label="Estado" opts={[{ v: "todos", t: "todos" }, { v: "revision", t: "En revisión" }, { v: "provisional", t: "Provisional" }, ...(audience === "agencia" ? [{ v: "pausada", t: "Pausadas" }] : [])]} />}
       </div>
-      <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#78716c" }}>{lab ? <><UserPlus size={13} color={BLUE} /> Tareas delegadas a 9Lab (agencia interna). {isLab ? "Trabájalas con su COR de agencia; el cliente y sus costos no se ven aquí." : "El Director o el ejecutivo pueden devolverlas a su dueño original."}</> : apr ? <><RefreshCcw size={13} color={BLUE} /> Reingresos: tareas que vuelven a tu aprobación (misma tarea en COR y tiempos ya registrados). Al aceptarlas o reactivarlas se vuelven a planificar.</> : sol ? <><Files size={13} color={BRAND} /> {audience === "cliente" ? "Pedidos nuevos por decidir" : "Solicitudes"} de todas las semanas, ordenadas por fecha al aire ({fSort === "antiguas" ? "más antiguas primero" : "más recientes primero"}). Al aceptarlas pasan a Tareas.</> : arch ? <><PackageCheck size={13} color="#92400e" /> Repositorio de tareas y campañas finalizadas. Puedes restaurarlas si hace falta.</> : <><ListOrdered size={13} color={BRAND} /> Tareas aceptadas, ordenadas por la prioridad que marcó el cliente.</>}</div>
+      <div className="text-xs mb-3 flex items-center gap-1.5" style={{ color: "#78716c" }}>{lab ? <><UserPlus size={13} color={BLUE} /> Tareas delegadas a 9Lab (agencia interna). {isLab ? "Trabájalas con su COR de agencia; el cliente y sus costos no se ven aquí." : "El Director o el ejecutivo pueden devolverlas a su dueño original."}</> : apr ? <><RefreshCcw size={13} color={BLUE} /> Reingresos: tareas que vuelven a tu aprobación (misma tarea en COR y tiempos ya registrados). Al aceptarlas o reactivarlas se vuelven a planificar.</> : sol ? <><Files size={13} color={BRAND} /> {audience === "cliente" ? "Pedidos nuevos por decidir" : "Solicitudes"} de todas las semanas, ordenadas por fecha de entrega ({fSort === "antiguas" ? "más antiguas primero" : "más recientes primero"}). Al aceptarlas pasan a Tareas.</> : arch ? <><PackageCheck size={13} color="#92400e" /> Repositorio de tareas y campañas finalizadas. Puedes restaurarlas si hace falta.</> : <><ListOrdered size={13} color={BRAND} /> Tareas aceptadas, ordenadas por la prioridad que marcó el cliente.</>}</div>
       {camps.length === 0 && <Card><div className="text-sm text-center" style={{ color: "#a8a29e" }}>{lab ? "Sin tareas delegadas a 9Lab." : apr ? "Sin reingresos por aprobar." : sol ? "Sin pendientes en esta semana." : arch ? "Aún no hay nada archivado en esta semana." : "Sin tareas aceptadas en esta semana o filtro."}</div></Card>}
       <div className="space-y-3">
         {camps.map((camp) => {
           const group = list.filter((i) => i.campana === camp).sort((a, b) => (solLike ? (fSort === "antiguas" ? a.fAire.localeCompare(b.fAire) : b.fAire.localeCompare(a.fAire)) : a.prio - b.prio)), g0 = group[0];
           const revis = group.filter((i) => i.estado === "revision"), gh = revis.reduce((a, i) => a + itemHours(i).tot, 0);
           const consL = ROLES.reduce((a, r) => a + consByW[g0.linea][r.id], 0), cap = Math.round(totalCapLinea(g0.linea) * capFactor(week)), projPct = cap ? Math.round(((consL + gh) / cap) * 100) : 0;
-          const campWeekH = group.filter((i) => i.estado === "aceptado" || i.estado === "provisional").reduce((a, i) => a + itemHoursWeek(i, week).tot, 0);
-          const scopeCap = lineaView === "General" ? Math.round(LINEAS.reduce((a, l) => a + totalCapLinea(l), 0) * capFactor(week)) : cap;
-          const campPct = scopeCap ? Math.round((campWeekH / scopeCap) * 100) : 0, cst = statusColor(campPct);
+          const campTasks = group.filter((i) => i.estado === "aceptado" || i.estado === "provisional");
+          const campWeekH = campTasks.reduce((a, i) => a + itemHoursWeek(i, week).tot, 0);
+          const campRole = {}; campTasks.forEach((i) => { const hw = itemHoursWeek(i, week).per; ROLES.forEach((r) => (campRole[r.id] = (campRole[r.id] || 0) + hw[r.id])); });
+          const roleCapOf = (rid) => Math.round((lineaView === "General" ? LINEAS.reduce((a, l) => a + (CAP[l]?.[rid] || 0), 0) : (CAP[lineaView]?.[rid] || CAP[g0.linea]?.[rid] || 0)) * capFactor(week));
+          const usedRoles = ROLES.filter((r) => campRole[r.id] > 0);
+          const campPct = usedRoles.length ? Math.round((usedRoles.reduce((a, r) => a + (roleCapOf(r.id) ? campRole[r.id] / roleCapOf(r.id) : 0), 0) / usedRoles.length) * 100) : 0, cst = statusColor(campPct);
           const reqH = group.reduce((a, i) => a + itemHours(i).tot, 0);
-          const prank = (campOrder[g0.linea] || []).indexOf(camp), isOpen = isCampOpen(camp);
+          const prank = campOrder.indexOf(camp), isOpen = isCampOpen(camp);
           const allDone = group.every((i) => i.ejecucion === "entregada");
           return (
             <Card key={camp} style={{ padding: 0 }}>
@@ -1498,11 +1623,13 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
                   {isOpen ? <ChevronDown size={16} color="#a8a29e" /> : <ChevronRight size={16} color="#a8a29e" />}
                   {prank >= 0 && !arch && <span className="rounded-md flex items-center justify-center" title="Prioridad del cliente" style={{ width: 22, height: 22, background: prank === 0 ? BRAND : "#f0eee9", color: prank === 0 ? "#fff" : "#57534e", fontWeight: 700, fontSize: 12 }}>{prank + 1}</span>}
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap"><Megaphone size={14} color={arch ? "#a8a29e" : BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e" }}>{group.length} entregables</span>{!solLike && !arch && (() => { const ch = campHealth(group); return <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title="Salud de la campaña según fechas al aire y estado de las tareas" style={{ background: ch.chip, color: ch.text, fontWeight: 600 }}><CircleDot size={10} /> {ch.label}</span>; })()}{solLike ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#fffbeb", color: "#92400e", fontWeight: 600 }}>{reqH} h por decidir</span> : !arch && <span className="text-xs px-2 py-0.5 rounded-full" title={`Ocupa ${campWeekH} h · ${campPct}% de la capacidad ${lineaView === "General" ? "total" : "de " + g0.linea} en ${WEEKLBL[week]}`} style={{ background: cst.chip, color: cst.text, fontWeight: 600 }}>{campPct}% de la semana</span>}{arch && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "#fef3c7", color: "#92400e", fontWeight: 600 }}><Archive size={11} /> Archivada</span>}</div>
+                    <div className="flex items-center gap-2 flex-wrap"><Megaphone size={14} color={arch ? "#a8a29e" : BRAND} /><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{camp}</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e" }}>{group.length} entregables</span>{arch && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" style={{ background: "#fef3c7", color: "#92400e", fontWeight: 600 }}><Archive size={11} /> Archivada</span>}</div>
                     <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: "#a8a29e" }}><span className="flex items-center gap-1"><Building2 size={11} /> {g0.marca}</span><span className="flex items-center gap-1"><CircleDot size={11} /> {catOf(g0.campana)}</span><span className="flex items-center gap-1"><Layers size={11} /> {g0.linea}</span>{audience === "cliente" && <span className="flex items-center gap-1"><User2 size={11} /> PO {g0.poCliente}</span>}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {!solLike && !arch && (() => { const ch = campHealth(group); return <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title="Salud de la campaña según fechas de entrega y estado de las tareas" style={{ background: ch.chip, color: ch.text, fontWeight: 600 }}><CircleDot size={10} /> {ch.label}</span>; })()}
+                  {solLike ? <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#fffbeb", color: "#92400e", fontWeight: 600 }}>{reqH} h por decidir</span> : !arch && <span className="text-xs px-2 py-0.5 rounded-full" title={`En promedio ocupa el ${campPct}% de la capacidad de los roles que usa en ${WEEKLBL[week]} · ${campWeekH} h`} style={{ background: cst.chip, color: cst.text, fontWeight: 600 }}>{campPct}% de la semana</span>}
                   {!solLike && audience === "agencia" && arch && <button onClick={(e) => { e.stopPropagation(); onArchiveCamp(group.map((i) => i.id), false); }} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: "#f0fdfa", border: "1px solid #bae6e0", color: "#115e59", fontWeight: 600 }}><ArchiveRestore size={13} /> Restaurar campaña</button>}
                   {!solLike && audience === "agencia" && !arch && allDone && <button onClick={(e) => { e.stopPropagation(); onArchiveCamp(group.map((i) => i.id), true); }} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: "#fef3c7", border: "1px solid #fcd34d", color: "#92400e", fontWeight: 600 }}><Archive size={13} /> Archivar campaña</button>}
                 </div>
@@ -1535,7 +1662,7 @@ function ItemRow({ it, idx, rank, audience, arch, showWeek, isLab, labView, onAc
           {it.lab && !labView && <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1" title={it.delegBy ? `Delegada a 9Lab por ${it.delegBy}` : "Delegada a 9Lab"} style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={10} /> 9Lab{it.delegBy ? ` · de ${it.delegBy.split(" ")[0]}` : ""}</span>}
         </div>
         <div className="flex items-center gap-2.5 mt-1 flex-wrap" style={{ color: "#a8a29e", fontSize: 11 }}>
-          <span className="flex items-center gap-1"><Calendar size={11} /> aire {fmt(it.fAire)}</span>
+          <span className="flex items-center gap-1"><Calendar size={11} /> Deadline {fmt(it.fAire)}</span>
           {showWeek && <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e", fontWeight: 600 }}><CalendarDays size={10} /> {it.weekPlan ? `${planWeeks(it).length} sem` : WEEKLBL[it.sem]}</span>}
           {audience === "agencia" && (labView && it.lab
             ? <span className="flex items-center gap-1" title={`Delegada por ${it.delegBy || "su dueño"}`}><UserPlus size={11} color={BLUE} /> de {it.delegBy || it.ejecutivo}</span>
@@ -1661,63 +1788,75 @@ function AdvanceModal({ entry, mode = "urgente", items, consAll, actingPO, onClo
   );
 }
 
-function Prioridades({ items, consAll, inWeek, inLinea, campOrder, onMoveItem, onMoveCamp, onSetPrio, week, actingPO, setActingPO, onAdvance, onRequest, onDelay }) {
+function Prioridades({ items, consAll, inWeek, campOrder, onReorderItem, onReorderCamp, onSetPrio, week, actingPO, onAdvance, onRequest, onDelay }) {
   const [advFor, setAdvFor] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
+  const [open, setOpen] = useState({});
+  const [warn, setWarn] = useState("");
+  const [dragTask, setDragTask] = useState(null);
+  const [overTask, setOverTask] = useState(null);
+  const [dragCamp, setDragCamp] = useState(null);
+  const [overCamp, setOverCamp] = useState(null);
+  const toggle = (c) => setOpen((o) => ({ ...o, [c]: !o[c] }));
+  const isDir = actingPO === "Director";
   const eIso = iso(earliestAdvanceDay());
   const canEarlier = (it) => WEEKS.some((w) => w < it.sem && weekDays(w).some((x) => !isOff(iso(x)) && iso(x) >= eIso));
-  const active = items.filter((i) => ["revision", "provisional", "aceptado"].includes(i.estado)).filter(inLinea).filter(inWeek);
-  const lineas = LINEAS.filter((l) => active.some((i) => i.linea === l));
+  const dpIdx = (it) => { if (it.dayPlan) { const ks = Object.keys(it.dayPlan).map(Number).filter((d) => it.dayPlan[d] > 0); return ks.length ? ks : null; } if (it.dia != null) return [it.dia]; return null; };
+  const startIso = (it) => { const dp = dpIdx(it); const di = dp ? Math.min(...dp) : (it.sem === TODAY_WEEK ? Math.max(0, TODAY_IDX) : 0); return iso(weekDays(it.sem)[di] || weekStart(it.sem)); };
+  const taskMovable = (it) => it.ejecucion !== "proceso" && startIso(it) >= eIso;
+  const active = items.filter((i) => !i.archivado && i.ejecucion !== "entregada" && ["revision", "provisional", "aceptado"].includes(i.estado)).filter(inWeek);
+  const involved = (c) => isDir || active.some((i) => i.campana === c && i.poCliente === actingPO);
+  const camps = [...campOrder.filter((c) => active.some((i) => i.campana === c)), ...[...new Set(active.map((i) => i.campana))].filter((c) => !campOrder.includes(c))].filter(involved);
+  const campMov = {}; camps.forEach((c) => (campMov[c] = active.filter((i) => i.campana === c).some(taskMovable)));
+  const dropOnTask = (target) => { const d = dragTask; setDragTask(null); setOverTask(null); if (!d || d.id === target.id || d.campana !== target.campana || d.sem !== target.sem || !taskMovable(d) || !taskMovable(target)) return; onReorderItem(d.id, target.id); if (!isDir && d.poCliente !== actingPO) setWarn(`Reordenaste una tarea de ${d.poCliente}. La prioridad reorganiza el tráfico de toda la campaña — coordínalo con ${d.poCliente}.`); };
+  const dropOnCamp = (target) => { const d = dragCamp; setDragCamp(null); setOverCamp(null); if (!d || d === target || !campMov[d] || !campMov[target]) return; onReorderCamp(d, target); };
   const Opt = ({ icon: Icon, label, hint, color, disabled, onClick }) => <button disabled={disabled} onClick={onClick} className="w-full text-left px-3 py-2 text-xs flex items-center gap-2" style={{ background: "#fff", color: disabled ? "#c4c0b8" : INK, cursor: disabled ? "not-allowed" : "pointer", borderBottom: "1px solid #f7f5f1" }}><Icon size={13} color={disabled ? "#c4c0b8" : color || "#78716c"} style={{ flexShrink: 0 }} /> <span style={{ fontWeight: 600 }}>{label}</span>{hint && <span style={{ color: "#a8a29e", marginLeft: "auto" }}>{hint}</span>}</button>;
   return (
     <div className="space-y-4">
-      <div className="rounded-xl px-4 py-2.5 text-xs flex items-center justify-between gap-2 flex-wrap" style={{ background: "#ecfeff", color: "#155e75" }}>
-        <span className="flex items-center gap-2"><ListOrdered size={14} /> Ordena, prioriza y reprograma entregables. Es de {WEEKLBL[week]}.</span>
-        <span className="flex items-center gap-1.5"><User2 size={13} /> Actúas como: <select value={actingPO} onChange={(e) => setActingPO(e.target.value)} style={{ ...dateInput, padding: "3px 7px", fontSize: 11, fontWeight: 700, color: "#155e75" }}>{["Director", ...POS].map((p) => <option key={p}>{p}</option>)}</select></span>
-      </div>
-      {lineas.map((linea) => {
-        const camps = (campOrder[linea] || []).filter((c) => active.some((i) => i.linea === linea && i.campana === c));
-        return (
-          <Card key={linea} style={{ padding: 0 }}>
-            <div className="px-5 py-3" style={{ borderBottom: "1px solid #f0eee9" }}><span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{linea}</span><span className="text-xs ml-2" style={{ color: "#a8a29e" }}>equipo propio · {totalCapLinea(linea)} h/sem</span></div>
-            {camps.map((camp, ci) => {
-              const its = active.filter((i) => i.linea === linea && i.campana === camp).sort((a, b) => a.prio - b.prio), ch = its.reduce((a, i) => a + itemHours(i).tot, 0);
-              return (
-                <div key={camp} style={{ borderTop: ci ? "1px solid #f0eee9" : "none" }}>
-                  <div className="px-5 py-2.5 flex items-center gap-3 flex-wrap" style={{ background: "#faf9f6" }}>
-                    <div className="rounded-md flex items-center justify-center" style={{ width: 24, height: 24, background: INK, color: "#fff", fontWeight: 700, fontSize: 12 }}>{ci + 1}</div>
-                    <Megaphone size={14} color={BRAND} /><span className="text-sm flex-1" style={{ fontWeight: 600 }}>{camp} <span className="text-xs" style={{ color: "#a8a29e" }}>· {its.length} entregables · {ch} h</span></span>
-                    <div className="flex flex-col gap-0.5"><button onClick={() => onMoveCamp(linea, camp, -1)} disabled={ci === 0} className="rounded flex items-center justify-center" style={{ width: 26, height: 18, background: ci === 0 ? "#f0eee9" : "#e7e5e4", color: ci === 0 ? "#d6d3d1" : "#44403c" }}><ChevronUp size={13} /></button><button onClick={() => onMoveCamp(linea, camp, 1)} disabled={ci === camps.length - 1} className="rounded flex items-center justify-center" style={{ width: 26, height: 18, background: ci === camps.length - 1 ? "#f0eee9" : "#e7e5e4", color: ci === camps.length - 1 ? "#d6d3d1" : "#44403c" }}><ChevronDown size={13} /></button></div>
-                  </div>
-                  {its.map((it, ei) => { const sku = skuById(it.skuId), es = ESTADO[it.estado], canAct = it.estado === "aceptado" || it.estado === "provisional", mine = it.poCliente === actingPO, canDelay = it.sem < 3, earlier = canEarlier(it); return (
-                    <div key={it.id} className="pl-12 pr-5 py-2 flex items-center gap-3 flex-wrap" style={{ borderTop: "1px solid #f7f5f1" }}>
-                      <span className="text-xs" style={{ color: "#a8a29e", width: 16 }}>{ei + 1}.</span>
-                      <div className="flex-1" style={{ minWidth: 160 }}><span className="text-sm">{sku.name} <span style={{ color: "#a8a29e" }}>×{it.cantidad}</span></span><span className="text-xs px-1.5 py-0.5 rounded-full ml-2" style={{ background: es.bg, color: es.fg, fontWeight: 600 }}>{es.label}</span><span className="text-xs ml-2" style={{ color: mine ? "#0f766e" : "#a8a29e" }}>{it.poCliente}</span>{it.pendingMove && <span className="text-xs px-1.5 py-0.5 rounded-full ml-1" style={{ background: "#eff6ff", color: "#1e40af", fontWeight: 600 }}>solicitud pendiente</span>}{!it.pendingMove && (it.log || []).some((l) => l.text.startsWith("Movida a Urgente")) && <span className="text-xs px-1.5 py-0.5 rounded-full ml-1" title={(it.log || []).filter((l) => l.text.startsWith("Movida a Urgente")).slice(-1)[0]?.by} style={{ background: "#fee2e2", color: "#9f1239", fontWeight: 600 }}>urgente</span>}</div>
-                      {canAct && !it.pendingMove && (mine ? <div style={{ position: "relative" }}>
-                        <button onClick={() => setMenuFor(menuFor === it.id ? null : it.id)} className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: menuFor === it.id ? "#f0eee9" : "#fff", border: "1px solid #e7e5e4", color: "#57534e", fontWeight: 600 }}><CalendarDays size={12} /> Reprogramar <ChevronDown size={12} /></button>
-                        {menuFor === it.id && <><div onClick={() => setMenuFor(null)} style={{ position: "fixed", inset: 0, zIndex: 40 }} /><div className="rounded-xl" style={{ position: "absolute", right: 0, top: 30, width: 224, background: "#fff", border: "1px solid #ece9e3", boxShadow: "0 12px 28px rgba(28,25,23,.16)", zIndex: 41, overflow: "hidden" }}>
-                          <Opt icon={ArrowRight} label="Siguiente semana" hint={canDelay ? "retrasar" : "sin semana"} disabled={!canDelay} onClick={() => { onDelay(it, actingPO); setMenuFor(null); }} />
-                          <Opt icon={AlertTriangle} label="Mover a Urgente" color="#b45309" hint={earlier ? "" : "sin hueco"} disabled={!earlier} onClick={() => { setAdvFor({ it, mode: "urgente" }); setMenuFor(null); }} />
-                          <Opt icon={ArrowLeft} label="Adelantar a…" color={BRAND} hint={earlier ? "" : "sin hueco"} disabled={!earlier} onClick={() => { setAdvFor({ it, mode: "adelantar" }); setMenuFor(null); }} />
-                        </div></>}
-                      </div> : <span title={`Solo ${it.poCliente} puede reprogramar su entregable`} className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: "#f5f5f4", color: "#c4c0b8", fontWeight: 600, cursor: "not-allowed" }}><Lock size={11} /> Reprogramar</span>)}
-                      <select value={it.prioridad || "Media"} onChange={(e) => onSetPrio(it, e.target.value)} title="Prioridad · qué resolver primero" style={{ ...dateInput, padding: "3px 7px", fontSize: 11, fontWeight: 700, color: PRIO_COLOR[it.prioridad || "Media"] }}>{PRIORIDADES.map((p) => <option key={p} value={p}>{p}</option>)}</select>
-                      <div className="flex gap-1"><button onClick={() => onMoveItem(it, -1)} disabled={ei === 0} className="rounded flex items-center justify-center" style={{ width: 24, height: 22, background: ei === 0 ? "#f7f5f1" : "#f0eee9", color: ei === 0 ? "#d6d3d1" : "#57534e" }}><ChevronUp size={12} /></button><button onClick={() => onMoveItem(it, 1)} disabled={ei === its.length - 1} className="rounded flex items-center justify-center" style={{ width: 24, height: 22, background: ei === its.length - 1 ? "#f7f5f1" : "#f0eee9", color: ei === its.length - 1 ? "#d6d3d1" : "#57534e" }}><ChevronDown size={12} /></button></div>
-                    </div>
-                  ); })}
+      <div className="flex items-center gap-2"><ListOrdered size={20} color={INK} /><span style={{ ...serif, fontSize: 24, fontWeight: 700, color: INK }}>Priorizaciones</span></div>
+      <NoteBox>Ordena las campañas y las tareas dentro de cada una — <b>independiente del segmento</b> (las tareas de una misma campaña van juntas, aunque estén en DC1 y DC2). Priorizar <b>reorganiza el tráfico de {WEEKLBL[week]}</b>: el plan se reordena por prioridad respetando el <b>tiempo mínimo</b> (después del mediodía ya no entra para mañana; de noche entra en 48 h). {isDir ? "Como Director ordenas campañas y tareas." : "Ordenas las tareas dentro de tus campañas; las campañas solo las ordena el Director."} Arrastra para reordenar.</NoteBox>
+      {warn && <div className="rounded-xl px-4 py-2.5 text-xs flex items-start gap-2" style={{ background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e" }}><AlertTriangle size={14} style={{ marginTop: 1, flexShrink: 0 }} /><span style={{ flex: 1 }}>{warn}</span><button onClick={() => setWarn("")} style={{ color: "#92400e" }}><X size={14} /></button></div>}
+      <Card style={{ padding: 0 }}>
+        <div className="px-5 py-3 flex items-center justify-between gap-2 flex-wrap" style={{ borderBottom: "1px solid #f0eee9" }}>
+          <span className="text-sm" style={{ fontWeight: 700, color: INK }}>Orden de prioridad · {WEEKLBL[week]} <span className="text-xs" style={{ color: "#a8a29e", fontWeight: 400 }}>· {camps.length} campañas</span></span>
+          {camps.length > 0 && <button onClick={() => { const allOpen = camps.every((c) => open[c]); const next = {}; camps.forEach((c) => (next[c] = !allOpen)); setOpen((o) => ({ ...o, ...next })); }} className="text-xs flex items-center gap-1" style={{ color: "#0f766e", fontWeight: 700 }}>{camps.every((c) => open[c]) ? "Colapsar todas" : "Expandir todas"}</button>}
+        </div>
+        {camps.length === 0 ? <div className="text-sm text-center py-6" style={{ color: "#a8a29e" }}>Sin entregables activos en {WEEKLBL[week]}.</div> : camps.map((camp, ci) => {
+          const its = active.filter((i) => i.campana === camp).sort((a, b) => a.prio - b.prio || a.linea.localeCompare(b.linea)), g0 = its[0], ch = its.reduce((a, i) => a + itemHours(i).tot, 0), segs = [...new Set(its.map((i) => i.linea))];
+          return (
+            <div key={camp} style={{ borderTop: ci ? "1px solid #f0eee9" : "none" }}>
+              <div onClick={() => toggle(camp)} draggable={isDir && campMov[camp]} onDragStart={() => { if (isDir && campMov[camp]) setDragCamp(camp); }} onDragEnd={() => { setDragCamp(null); setOverCamp(null); }} onDragOver={(e) => { if (isDir && dragCamp && dragCamp !== camp && campMov[camp]) { e.preventDefault(); setOverCamp(camp); } }} onDragLeave={() => { if (overCamp === camp) setOverCamp(null); }} onDrop={(e) => { e.preventDefault(); dropOnCamp(camp); }} className="px-5 py-2.5 flex items-center gap-3 flex-wrap" style={{ background: overCamp === camp ? "#eef2ff" : "#faf9f6", cursor: isDir && campMov[camp] ? "grab" : "pointer", boxShadow: overCamp === camp ? `inset 0 2px 0 0 ${BLUE}` : "none" }}>
+                {open[camp] ? <ChevronDown size={15} color="#a8a29e" /> : <ChevronRight size={15} color="#a8a29e" />}
+                <div className="rounded-md flex items-center justify-center" style={{ width: 24, height: 24, background: INK, color: "#fff", fontWeight: 700, fontSize: 12 }}>{ci + 1}</div>
+                <Megaphone size={14} color={BRAND} /><span className="text-sm flex-1" style={{ fontWeight: 600 }}>{camp} <span className="text-xs" style={{ color: "#a8a29e" }}>· {g0.marca} · {segs.join(" + ")} · {its.length} entregables · {ch} h</span></span>
+                {isDir ? (campMov[camp] ? <span title="Arrastra para reordenar la campaña" style={{ color: "#a8a29e", cursor: "grab", fontSize: 16, lineHeight: 1, letterSpacing: 1 }}>⠿</span> : <span title="Campaña en curso o dentro del tiempo mínimo · no se puede repriorizar" className="text-xs flex items-center gap-1" style={{ color: "#c4c0b8", fontWeight: 600 }}><Lock size={11} /> En curso</span>) : <span title="Solo el Director ordena la prioridad entre campañas" className="text-xs flex items-center gap-1" style={{ color: "#c4c0b8", fontWeight: 600 }}><Lock size={11} /> Fijado por Director</span>}
+              </div>
+              {open[camp] && its.map((it, ei) => { const sku = skuById(it.skuId), es = ESTADO[it.estado], canAct = it.estado === "aceptado" || it.estado === "provisional", mine = it.poCliente === actingPO, canReprog = mine || isDir, canDelay = it.sem < 3, earlier = canEarlier(it), mov = taskMovable(it), upOk = ei > 0 && mov && taskMovable(its[ei - 1]), downOk = ei < its.length - 1 && mov && taskMovable(its[ei + 1]); return (
+                <div key={it.id} draggable={mov} onDragStart={() => { if (mov) setDragTask(it); }} onDragEnd={() => { setDragTask(null); setOverTask(null); }} onDragOver={(e) => { if (dragTask && dragTask.id !== it.id && dragTask.campana === it.campana && dragTask.sem === it.sem && taskMovable(it)) { e.preventDefault(); setOverTask(it.id); } }} onDragLeave={() => { if (overTask === it.id) setOverTask(null); }} onDrop={(e) => { e.preventDefault(); dropOnTask(it); }} className="pl-12 pr-5 py-2 flex items-center gap-3 flex-wrap" style={{ borderTop: overTask === it.id ? `2px solid ${BLUE}` : "1px solid #f7f5f1", background: overTask === it.id ? "#f5f8ff" : "transparent", cursor: mov ? "grab" : "default" }}>
+                  <span className="text-xs" style={{ color: "#a8a29e", width: 16 }}>{ei + 1}.</span>
+                  <div className="flex-1" style={{ minWidth: 160 }}><span className="text-sm">{sku.name} <span style={{ color: "#a8a29e" }}>×{it.cantidad}</span></span><span className="text-xs px-1.5 py-0.5 rounded-full ml-2" style={{ background: es.bg, color: es.fg, fontWeight: 600 }}>{es.label}</span><span className="text-xs ml-2 px-1.5 py-0.5 rounded-full" style={{ background: "#f0eee9", color: "#57534e" }}>{it.linea}</span><span className="text-xs ml-2" style={{ color: mine ? "#0f766e" : "#a8a29e", fontWeight: mine ? 600 : 400 }}>{it.poCliente}</span>{it.pendingMove && <span className="text-xs px-1.5 py-0.5 rounded-full ml-1" style={{ background: "#eff6ff", color: "#1e40af", fontWeight: 600 }}>solicitud pendiente</span>}{!it.pendingMove && (it.log || []).some((l) => l.text.startsWith("Movida a Urgente")) && <span className="text-xs px-1.5 py-0.5 rounded-full ml-1" title={(it.log || []).filter((l) => l.text.startsWith("Movida a Urgente")).slice(-1)[0]?.by} style={{ background: "#fee2e2", color: "#9f1239", fontWeight: 600 }}>urgente</span>}</div>
+                  {canAct && !it.pendingMove && (canReprog ? <div style={{ position: "relative" }}>
+                    <button onClick={() => setMenuFor(menuFor === it.id ? null : it.id)} className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: menuFor === it.id ? "#f0eee9" : "#fff", border: "1px solid #e7e5e4", color: "#57534e", fontWeight: 600 }}><CalendarDays size={12} /> Reprogramar <ChevronDown size={12} /></button>
+                    {menuFor === it.id && <><div onClick={() => setMenuFor(null)} style={{ position: "fixed", inset: 0, zIndex: 40 }} /><div className="rounded-xl" style={{ position: "absolute", right: 0, top: 30, width: 224, background: "#fff", border: "1px solid #ece9e3", boxShadow: "0 12px 28px rgba(28,25,23,.16)", zIndex: 41, overflow: "hidden" }}>
+                      <Opt icon={ArrowRight} label="Siguiente semana" hint={canDelay ? "retrasar" : "sin semana"} disabled={!canDelay} onClick={() => { onDelay(it, actingPO); setMenuFor(null); }} />
+                      <Opt icon={AlertTriangle} label="Mover a Urgente" color="#b45309" hint={earlier ? "" : "sin hueco"} disabled={!earlier} onClick={() => { setAdvFor({ it, mode: "urgente" }); setMenuFor(null); }} />
+                      <Opt icon={ArrowLeft} label="Adelantar a…" color={BRAND} hint={earlier ? "" : "sin hueco"} disabled={!earlier} onClick={() => { setAdvFor({ it, mode: "adelantar" }); setMenuFor(null); }} />
+                    </div></>}
+                  </div> : <span title={`Solo ${it.poCliente} puede reprogramar su entregable`} className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1" style={{ background: "#f5f5f4", color: "#c4c0b8", fontWeight: 600, cursor: "not-allowed" }}><Lock size={11} /> Reprogramar</span>)}
+                  <select value={it.prioridad || "Media"} onChange={(e) => onSetPrio(it, e.target.value)} title="Prioridad · qué resolver primero" style={{ ...dateInput, padding: "3px 7px", fontSize: 11, fontWeight: 700, color: PRIO_COLOR[it.prioridad || "Media"] }}>{PRIORIDADES.map((p) => <option key={p} value={p}>{p}</option>)}</select>
+                  {mov ? <span title="Arrastra para reordenar la prioridad" style={{ color: "#c4c0b8", cursor: "grab", fontSize: 14, lineHeight: 1, letterSpacing: 1 }}>⠿</span> : <span title="En curso o dentro del tiempo mínimo · no se puede repriorizar" className="text-xs flex items-center gap-1" style={{ color: "#c4c0b8", fontWeight: 600 }}><Lock size={11} /> Fijada</span>}
                 </div>
-              );
-            })}
-          </Card>
-        );
-      })}
-      {lineas.length === 0 && <Card><div className="text-sm text-center" style={{ color: "#a8a29e" }}>Sin entregables activos en {WEEKLBL[week]}.</div></Card>}
+              ); })}
+            </div>
+          );
+        })}
+      </Card>
       {advFor && <AdvanceModal entry={advFor.it} mode={advFor.mode} items={items} consAll={consAll} actingPO={actingPO} onClose={() => setAdvFor(null)} onApply={onAdvance} onRequest={onRequest} />}
     </div>
   );
 }
 
-function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOpenCor, onCopy, onMoveDia, onReset, onOpenSplit, onReplace }) {
+function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, me, isDirector, onOpenCor, onCopy, onMoveDia, onReset, onOpenSplit, onReplace, onRequestMove }) {
   const days = weekDays(week);
   const scope = lineaView === "General" ? LINEAS : [lineaView];
   const weekCap = scope.reduce((a, l) => a + totalCapLinea(l), 0);
@@ -1729,9 +1868,11 @@ function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOp
   const lastWork = [4, 3, 2, 1, 0].find((i) => !off(i));
   const [dragId, setDragId] = useState(null);
   const [moveModal, setMoveModal] = useState(null);
+  const [reqModal, setReqModal] = useState(null);
+  const canMoveOwn = (t) => isDirector || agencyOwner(t) === me;
 
   const tasks = items.filter(inLinea).filter((i) => weekFrac(i, week) > 0 && i.estado === "aceptado");
-  const crank = (t) => { const arr = campOrder[t.linea] || []; const r = arr.indexOf(t.campana); return r < 0 ? 999 : r; };
+  const crank = (t) => { const r = campOrder.indexOf(t.campana); return r < 0 ? 999 : r; };
   const ordered = [...tasks].sort((a, b) => crank(a) - crank(b) || a.prio - b.prio);
 
   const cols = [[], [], [], [], []], load = [0, 0, 0, 0, 0];
@@ -1761,6 +1902,7 @@ function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOp
     if (!dragId || !canDrop(di)) { setDragId(null); return; }
     const mover = moverTask(); setDragId(null);
     if (!mover) return;
+    if (!canMoveOwn(mover)) { setReqModal({ mover, toDia: di, victim: null, mode: "day" }); return; }   // tarea de otro ejecutivo → consultar
     if (mover.dayPlan) { onOpenSplit(mover); return; }   // dividida en días → volver a repartir
     if (mover.dia === di) return;                                          // mismo día
     const free = dailyCap - load[di];
@@ -1771,6 +1913,7 @@ function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOp
     if (!dragId) { return; }
     const mover = moverTask(); setDragId(null);
     if (!mover || mover.id === victim.id || !canDrop(di)) return;
+    if (!canMoveOwn(mover)) { setReqModal({ mover, toDia: di, victim, mode: "task" }); return; }   // tarea de otro ejecutivo → consultar
     if (mover.dayPlan) { onOpenSplit(mover); return; }   // dividida en días → volver a repartir
     setMoveModal({ mover, toDia: di, victim, mode: "task" });               // soltar encima → reemplazar a esa tarea
   };
@@ -1797,7 +1940,7 @@ function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOp
               </div>
               <div className="p-2 space-y-2">
                 {cols[di].map((seg, si) => {
-                  const it = seg.it, sku = skuById(it.skuId), es = ESTADO[it.estado], ej = it.ejecucion ? EJEC[it.ejecucion] : null, lk = locked(it, di), tot = itemHoursWeek(it, week).tot;
+                  const it = seg.it, sku = skuById(it.skuId), es = ESTADO[it.estado], ej = it.ejecucion ? EJEC[it.ejecucion] : null, lk = locked(it, di), tot = itemHoursWeek(it, week).tot, own = audience === "agencia" && agencyOwner(it) === me;
                   const grab = audience === "agencia" && week >= TODAY_WEEK && !lk && !it.weekPlan;
                   const canSplit = audience === "agencia" && it.ejecucion !== "entregada" && !it.weekPlan && !(week === TODAY_WEEK && di < todayIdx);
                   return (
@@ -1805,7 +1948,7 @@ function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOp
                       onDragOver={(e) => { if (audience === "agencia" && dragId && dragId !== it.id && canDrop(di)) { e.preventDefault(); e.stopPropagation(); } }}
                       onDrop={(e) => { e.stopPropagation(); dropOnTask(it, di); }}
                       onClick={() => it.corId && onOpenCor(it)}
-                      className="rounded-lg p-2" style={{ background: dragId === it.id ? "#ecfeff" : "#faf9f6", border: "1px solid #ece9e3", borderLeft: `3px solid ${seg.split ? BRAND : es.fg}`, cursor: grab ? "grab" : (it.corId ? "pointer" : "default"), opacity: lk ? 0.7 : 1 }}>
+                      className="rounded-lg p-2" style={{ background: dragId === it.id ? "#ecfeff" : (own ? "#f0fdfa" : "#faf9f6"), border: "1px solid #ece9e3", borderLeft: `3px solid ${own ? BRAND : seg.split ? "#b45309" : es.fg}`, cursor: grab ? "grab" : (it.corId ? "pointer" : "default"), opacity: lk ? 0.7 : 1 }}>
                       <div className="flex items-start gap-1">
                         {audience === "agencia" && (lk ? <Lock size={11} color="#c4c0b8" style={{ marginTop: 2, flexShrink: 0 }} /> : seg.split ? <Scissors size={11} color={BRAND} style={{ marginTop: 2, flexShrink: 0 }} /> : <GripVertical size={11} color="#c4c0b8" style={{ marginTop: 2, flexShrink: 0 }} />)}
                         <div className="flex-1" style={{ minWidth: 0 }}><div className="text-xs" style={{ fontWeight: 600, lineHeight: 1.2 }}>{sku.name}</div><div className="text-xs flex items-center gap-0.5" style={{ color: "#a8a29e", lineHeight: 1.3 }}><Megaphone size={9} style={{ flexShrink: 0 }} /> {it.campana}{it.delayed && <Clock size={9} color="#9f1239" style={{ flexShrink: 0 }} />}</div></div>
@@ -1813,6 +1956,7 @@ function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOp
                       </div>
                       <div className="flex items-center gap-1 mt-1 flex-wrap">
                         <span className="text-xs px-1 rounded" style={{ background: "#f0eee9", color: "#57534e" }}>{it.marca}</span>
+                        {audience === "agencia" && <span className="text-xs px-1 rounded flex items-center gap-0.5" title={own ? "Tu tarea" : `A cargo de ${agencyOwner(it)}`} style={{ background: own ? "#ccfbf1" : "#f0eee9", color: own ? "#115e59" : "#78716c", fontWeight: own ? 700 : 500 }}><User2 size={9} /> {agencyOwner(it)}{own ? " · tú" : ""}</span>}
                         {it.weekPlan && <span className="text-xs px-1 rounded flex items-center gap-0.5" title="Una sola tarea, repartida en varias semanas · 1 sola tarea en COR" style={{ background: "#ecfeff", color: "#155e75", fontWeight: 600 }}><CalendarDays size={9} /> {it.weekLabels && it.weekLabels[week] ? `${it.weekLabels[week]} · ${Math.round(weekFrac(it, week) * 100)}%` : `${Math.round(weekFrac(it, week) * 100)}%`}</span>}
                         {seg.split ? <span className="text-xs" style={{ color: BRAND, fontWeight: 700 }}>{seg.h}h <span style={{ color: "#a8a29e", fontWeight: 400 }}>de {tot}h</span></span> : <span className="text-xs" style={{ color: "#a8a29e" }}>{seg.h}h</span>}
                       </div>
@@ -1832,22 +1976,32 @@ function SemanaView({ items, audience, inLinea, lineaView, campOrder, week, onOp
       <div className="text-xs mt-3 leading-relaxed" style={{ color: "#a8a29e" }}>
         El trabajo nuevo se programa desde hoy en adelante y se reparte por prioridad del cliente, llenando cada día hasta su capacidad ({dailyCap} h). Si una tarea no cabe completa en un día, sus horas sobrantes pasan solas al día siguiente — ningún día se sobrecarga. {audience === "agencia" ? <>Arrastra una tarjeta a otro día para replanificar: si el día tiene cupo se mueve directo; si está lleno, eliges qué tarea reemplazar y a dónde mover la desplazada. Suelta una tarjeta <b>encima de otra</b> para reemplazarla. Las tarjetas divididas (<Scissors size={11} className="inline" style={{ verticalAlign: "-1px" }} />) se pueden mover y abren el reparto de horas.</> : "Vista de cliente: solo lectura."} Muestra solo lo ya aprobado y planificado (tareas aceptadas). Las tareas entregadas y las del día de hoy quedan bloqueadas. Los feriados no laborables (en rojo) no reciben trabajo y la capacidad de la semana se reparte solo entre los días laborables.
       </div>
-      {mm && <PlannerMoveModal mover={mm.mover} toDia={mm.toDia} victim={mm.victim} mode={mm.mode} dayName={DAYS[mm.toDia]} victims={dayVictims} nearestDay={nearestDay} fwdWeeks={fwdWeeks} week={week} onConfirm={(vId, dest) => { onReplace(mm.mover.id, mm.toDia, week, vId, dest); setMoveModal(null); }} onClose={() => setMoveModal(null)} />}
+      {mm && <PlannerMoveModal mover={mm.mover} toDia={mm.toDia} victim={mm.victim} mode={mm.mode} dayName={DAYS[mm.toDia]} victims={dayVictims} nearestDay={nearestDay} fwdWeeks={fwdWeeks} week={week} onConfirm={(vId, dest) => { onReplace(mm.mover.id, mm.toDia, week, vId, dest); setMoveModal(null); }} onClose={() => setMoveModal(null)} onSplit={!mm.mover.weekPlan ? () => { onOpenSplit(mm.mover); setMoveModal(null); } : null} />}
+      {reqModal && <div className="fixed inset-0 flex items-center justify-center px-4" style={{ background: "rgba(28,25,23,0.45)", zIndex: 60 }} onClick={() => setReqModal(null)}>
+        <div className="rounded-2xl p-6 w-full" style={{ background: "#fff", maxWidth: 440 }} onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2 mb-2"><User2 size={18} color={BLUE} /><span style={{ ...serif, fontSize: 19, fontWeight: 700 }}>Tarea de otro ejecutivo</span></div>
+          <p className="text-sm mb-4" style={{ color: "#57534e", lineHeight: 1.55 }}>“{skuById(reqModal.mover.skuId).name} · {reqModal.mover.campana}” está a cargo de <b style={{ color: INK }}>{agencyOwner(reqModal.mover)}</b>. No puedes moverla directo: envía una solicitud para que la mueva al <b>{DAYS[reqModal.toDia]}</b> de {WEEKLBL[week]}{reqModal.victim ? <> (reemplazando a “{skuById(reqModal.victim.skuId).name}”)</> : null}.</p>
+          <div className="flex gap-2"><button onClick={() => setReqModal(null)} className="flex-1 rounded-full py-2.5 text-sm" style={{ background: "#e7e5e4", color: INK, fontWeight: 600 }}>Cancelar</button><button onClick={() => { onRequestMove(reqModal.mover, reqModal.toDia, week, reqModal.victim, reqModal.mode, me); setReqModal(null); }} className="flex-1 rounded-full py-2.5 text-sm flex items-center justify-center gap-1 whitespace-nowrap" style={{ background: BLUE, color: "#fff", fontWeight: 600 }}><Send size={14} /> Enviar solicitud</button></div>
+        </div>
+      </div>}
     </div>
   );
 }
 
-function PlannerMoveModal({ mover, toDia, victim, mode, dayName, victims, nearestDay, fwdWeeks, week, onConfirm, onClose }) {
+function PlannerMoveModal({ mover, toDia, victim, mode, dayName, victims, nearestDay, fwdWeeks, week, onConfirm, onClose, onSplit }) {
   const [vId, setVId] = useState(victim ? victim.id : null);
   const v = victim || victims.find((x) => x.id === vId) || null;
   const moverName = skuById(mover.skuId).name;
+  const moverHours = itemHoursWeek(mover, week).tot;
   const noDest = nearestDay == null && fwdWeeks.length === 0;
   const btn = { width: "100%", textAlign: "left", border: "1px solid #ece9e3", borderRadius: 12, padding: "10px 12px", background: "#fff" };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(28,25,23,.45)" }} onClick={onClose}>
       <div className="rounded-2xl w-full" style={{ maxWidth: 440, background: PAPER, padding: 20, maxHeight: "85vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-3 mb-2"><div className="rounded-full flex items-center justify-center" style={{ width: 40, height: 40, background: mode === "task" ? "#ecfeff" : "#fef3c7" }}>{mode === "task" ? <ArrowLeftRight size={20} color="#0f766e" /> : <AlertTriangle size={20} color="#b45309" />}</div><div style={{ ...serif, fontSize: 19, fontWeight: 700 }}>{mode === "task" ? "Reemplazar tarea" : `${dayName} está lleno`}</div></div>
-        <p className="text-xs mb-4" style={{ color: "#78716c" }}>Mueves <b style={{ color: INK }}>{moverName}</b> <span style={{ color: "#a8a29e" }}>· {mover.campana}</span> al {dayName}.</p>
+        <p className="text-xs mb-3" style={{ color: "#78716c" }}>Mueves <b style={{ color: INK }}>{moverName}</b> <span style={{ color: "#a8a29e" }}>· {mover.campana}</span> al {dayName}. Pesa <b style={{ color: INK }}>{moverHours} h</b> y el día no tiene cupo para todas.</p>
+        {onSplit && !vId && <button onClick={onSplit} className="w-full mb-3 rounded-xl px-3 py-2.5 flex items-center gap-2 text-sm" style={{ border: "1px solid #bae6e0", background: "#f0fdfa", color: "#115e59", fontWeight: 600 }}><Scissors size={15} style={{ flexShrink: 0 }} /> Repartir sus {moverHours} h en varios días<span className="text-xs" style={{ marginLeft: "auto", color: "#0f766e", fontWeight: 400, whiteSpace: "nowrap" }}>sin sacar a nadie</span></button>}
+        {onSplit && !vId && <div className="text-xs mb-2 flex items-center gap-2" style={{ color: "#c4c0b8" }}><span style={{ flex: 1, height: 1, background: "#ece9e3" }} /> o reemplaza una tarea <span style={{ flex: 1, height: 1, background: "#ece9e3" }} /></div>}
         {!vId
           ? <div>
             <div className="text-xs mb-2" style={{ fontWeight: 600, color: INK }}>¿Qué tarea quieres reemplazar en {dayName}?</div>
@@ -2084,7 +2238,7 @@ Pedido: """${aiText}"""`;
     <Card>
       <button onClick={() => setMode(null)} className="text-xs flex items-center gap-1 mb-3" style={{ color: "#78716c" }}><ArrowLeft size={13} /> volver</button>
       <div className="flex items-center gap-2 mb-1"><Sparkles size={18} color={BRAND} /><span style={{ ...serif, fontSize: 20, fontWeight: 700 }}>Ingreso con IA</span></div><p className="text-xs mb-4" style={{ color: "#78716c" }}>Escribe el pedido como te lo pidieron. Claude lo estructura.</p>
-      <textarea value={aiText} onChange={(e) => setAiText(e.target.value)} rows={4} style={{ ...inp, fontSize: 14 }} placeholder='Ej: "Para DIS, campaña Día de la madre, segmento temporalidades, PO Carla Ríos: 3 key visuals complejidad alta y 18 posts simples, al aire el 12 de junio."' />
+      <textarea value={aiText} onChange={(e) => setAiText(e.target.value)} rows={4} style={{ ...inp, fontSize: 14 }} placeholder='Ej: "Para DIS, campaña Día de la madre, segmento temporalidades, PO Carla Ríos: 3 key visuals complejidad alta y 18 posts simples, con fecha de entrega el 12 de junio."' />
       {aiError && <div className="text-xs mt-2" style={{ color: "#be123c" }}>{aiError}</div>}
       <button onClick={runAI} disabled={aiLoading || !aiText.trim()} className="mt-4 flex items-center gap-2 rounded-full px-5 py-3 text-sm" style={{ background: aiLoading || !aiText.trim() ? "#d6d3d1" : BRAND, color: "#fff", fontWeight: 600 }}>{aiLoading ? "Interpretando…" : <>Generar pedido <Sparkles size={15} /></>}</button>
     </Card>
@@ -2108,7 +2262,7 @@ Pedido: """${aiText}"""`;
               <button onClick={() => { setH("campanaNueva", !head.campanaNueva); setH("campana", ""); }} className="text-xs mt-1" style={{ color: BRAND, fontWeight: 600 }}>{head.campanaNueva ? "← elegir una existente" : "+ crear campaña nueva"}</button>
             </Field>
           </div>
-          {!head.campanaNueva && head.campana && <div className="text-xs mt-3 rounded-lg px-3 py-2" style={{ background: "#f0fdfa", color: "#115e59" }}>Campaña existente · Marca {head.marca} · {head.categoria}{head.categoria === "Temporalidades" ? " · segmento se define al aceptar" : ` · Segmento ${segFor(head.categoria, head.marca)}`} · al aire {fmt(head.fAire)}. Pasas directo a las tareas.</div>}
+          {!head.campanaNueva && head.campana && <div className="text-xs mt-3 rounded-lg px-3 py-2" style={{ background: "#f0fdfa", color: "#115e59" }}>Campaña existente · Marca {head.marca} · {head.categoria}{head.categoria === "Temporalidades" ? " · segmento se define al aceptar" : ` · Segmento ${segFor(head.categoria, head.marca)}`} · entrega {fmt(head.fAire)}. Pasas directo a las tareas.</div>}
           <button onClick={goFromCamp} disabled={!(head.campanaNueva || head.campana.trim())} className="mt-5 flex items-center gap-2 rounded-full px-5 py-3 text-sm" style={{ background: head.campanaNueva || head.campana.trim() ? INK : "#d6d3d1", color: PAPER, fontWeight: 600 }}>Siguiente <ArrowRight size={16} /></button>
         </div>
       )}
@@ -2322,7 +2476,7 @@ function RetrabajoModal({ item, onClose, onCreate }) {
     </div>
   );
 }
-function CorTaskModal({ item, side, onClose, onToast, onCopy, onRetro, onAddMember, onRemoveMember }) {
+function CorTaskModal({ item, side, onClose, onToast, onCopy, onRetro, onAddMember, onRemoveMember, audience, onReassign }) {
   const sku = skuById(item.skuId), { per, tot } = itemHours(item), ej = item.ejecucion ? EJEC[item.ejecucion] : EJEC.sin_iniciar;
   const logged = Math.round(tot * (item.avance || 0) / 100); const [msg, setMsg] = useState("");
   const send = () => { if (!msg.trim()) return; onToast("Comentario enviado a COR"); setMsg(""); };
@@ -2344,13 +2498,24 @@ function CorTaskModal({ item, side, onClose, onToast, onCopy, onRetro, onAddMemb
             <Row k="Estado" v={ej.label} />
             <Row k="Prioridad (cliente)" v={<span style={{ color: PRIO_COLOR[prio], fontWeight: 700 }}>{prio}</span>} />
             <Row k="Fecha de inicio" v={fmt(iso(weekStart(item.sem)))} />
-            <Row k="Fecha fin · al aire" v={fmt(item.fAire)} />
+            <Row k="Fecha de entrega" v={fmt(item.fAire)} />
             <Row k="Entregables" v={item.cantidad} />
             {!cli && <Row k="Etiqueta · complejidad" v={etById(item.etiqueta).name} />}
             <Row k="Horas planificadas" v={`${tot} h`} />
             {!cli && <Row k="Horas cargadas (COR)" v={`${logged} h`} />}
           </div>
           {item.weekPlan && <div className="rounded-lg px-3 py-2 mb-4 text-xs flex items-start gap-1.5" style={{ background: "#ecfeff", color: "#155e75" }}><CalendarDays size={13} style={{ marginTop: 1, flexShrink: 0 }} /><span><b>Una sola tarea</b>, con su trabajo repartido en el tiempo: {planWeeks(item).map((w) => `${item.weekLabels && item.weekLabels[w] ? item.weekLabels[w] + " · " : ""}${w === 0 ? "Sem. actual" : weekRange(w)} ${Math.round(item.weekPlan[w] * 100)}%`).join("  ·  ")}. Las {tot} h totales viven en este mismo COR.</span></div>}
+          {onReassign && <div className="rounded-lg px-3 py-2.5 mb-4" style={{ background: "#faf9f6" }}>
+            <div className="text-xs mb-2 flex items-center gap-1" style={{ color: "#78716c", fontWeight: 600 }}><ArrowLeftRight size={12} /> Owner de la tarea</div>
+            <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: INK }}>
+              <span>Ejecutivo: <b>{agencyOwner(item) || "—"}</b>{item.lab ? " (9Lab)" : ""}</span>
+              {audience === "agencia" && <select value="" onChange={(e) => { if (e.target.value) onReassign([item.id], "agencia", e.target.value); }} style={{ ...dateInput, padding: "4px 8px", fontWeight: 600, color: BRAND }}><option value="">Reasignar a…</option>{EJECUTIVOS.filter((n) => n !== agencyOwner(item)).map((n) => <option key={n}>{n}</option>)}</select>}
+              <span style={{ color: "#d6d3d1" }}>·</span>
+              <span>PO cliente: <b>{item.poCliente}</b></span>
+              <select value="" onChange={(e) => { if (e.target.value) onReassign([item.id], "cliente", e.target.value); }} style={{ ...dateInput, padding: "4px 8px", fontWeight: 600, color: BRAND }}><option value="">Reasignar a…</option>{POS.filter((n) => n !== item.poCliente).map((n) => <option key={n}>{n}</option>)}</select>
+            </div>
+            <div className="text-xs mt-2" style={{ color: "#a8a29e" }}>Al reasignar, la persona se agrega como miembro en COR (cliente y agencia); el anterior conserva el acceso.</div>
+          </div>}
           {(() => {
             const members = cli ? (item.membersCli || [item.poCliente].filter(Boolean)) : (item.membersAg || integrantes.map((r) => CREATIVOS[r.id]));
             const pool = cli ? POS : Object.values(CREATIVOS);
