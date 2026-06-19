@@ -707,8 +707,9 @@ function Main({ onExit }) {
 
   return (
     <div style={{ background: PAPER, color: INK, minHeight: 680 }} className="w-full">
+      <DemoBar audience={audience} setAudience={setAudience} actingExec={actingExec} setActingExec={setActingExec} actingPO={actingPO} setActingPO={setActingPO} isDirector={isDirector} onSimular={() => setCloseDay({ mandatory: true, tasks: dueToday })} />
       <div className="max-w-5xl mx-auto px-6 py-6">
-        <Header audience={audience} setAudience={setAudience} week={week} setWeek={setWeek} lineaView={lineaView} setLineaView={setLineaView} onExit={onExit} onConfig={() => setCfg(true)} notifs={myNotifs} reqs={myReqs} onApprove={(r) => approveReq(r, approverName)} onReject={(r) => rejectReq(r, approverName)} onReadNotifs={markNotifsRead} hideWeek={view === "solicitudes" || view === "aprobaciones"} actingPO={actingPO} setActingPO={setActingPO} actingExec={actingExec} setActingExec={setActingExec} isDirector={isDirector} isLab={isLab} showCap={showCap} setShowCap={setShowCap} myLines={myLines} view={view} setView={setView} dashDisabled={dashDisabled} />
+        <Header audience={audience} setAudience={setAudience} week={week} setWeek={setWeek} lineaView={lineaView} setLineaView={setLineaView} onExit={onExit} onConfig={() => setCfg(true)} notifs={myNotifs} reqs={myReqs} onApprove={(r) => approveReq(r, approverName)} onReject={(r) => rejectReq(r, approverName)} onReadNotifs={markNotifsRead} hideWeek={view === "solicitudes" || view === "aprobaciones"} actingPO={actingPO} setActingPO={setActingPO} actingExec={actingExec} setActingExec={setActingExec} isDirector={isDirector} isLab={isLab} showCap={showCap} setShowCap={setShowCap} myLines={myLines} view={view} setView={setView} dashDisabled={dashDisabled} onCierre={() => setCloseDay({ mandatory: false, tasks: dueToday })} onSimular={() => setCloseDay({ mandatory: true, tasks: dueToday })} dueCount={dueToday.length} />
         {(isLab || (!(! isDirector && lineaView === "General") && (isDirector || showCap))) && <CapStrip items={items} consByW={consByW} provByW={provByW} lineaView={lineaView} week={week} inLinea={inLinea} inWeek={inWeek} />}
         <div className="flex items-center gap-2 mt-4" style={{ minHeight: 30 }}>
           {view === "solicitudes" || view === "aprobaciones" ? <span className="flex items-center gap-1.5 text-xs" style={{ color: "#a8a29e" }}><Files size={14} /> {view === "aprobaciones" ? "Aprobaciones · reingresos de todas las semanas" : "Solicitudes de todas las semanas"}</span> : <>
@@ -725,10 +726,8 @@ function Main({ onExit }) {
               </>;
             })()}
           </>}
-          {audience === "agencia" && <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
-            {!isLab && <button onClick={() => setView("ingreso")} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: view === "ingreso" ? "#0b5b54" : BRAND, color: "#fff", fontWeight: 600 }}><PlusCircle size={13} /> Ingresar pedido</button>}
-            {!isDirector && <button onClick={() => setCloseDay({ mandatory: false, tasks: dueToday })} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: dueToday.length ? "#fffbeb" : "#f0eee9", border: `1px solid ${dueToday.length ? "#fcd34d" : "#e7e5e4"}`, color: dueToday.length ? "#92400e" : "#78716c", fontWeight: 600 }}><ClipboardList size={13} /> Cierre del día{dueToday.length ? ` · ${dueToday.length}` : ""}</button>}
-            {!isDirector && <button onClick={() => setCloseDay({ mandatory: true, tasks: dueToday })} title="Demo: simular que es la mañana siguiente y la jornada anterior no se cerró" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: INK, color: PAPER, fontWeight: 600 }}><Clock size={13} /> Simular nuevo día</button>}
+          {audience === "agencia" && !isLab && <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
+            <button onClick={() => setView("ingreso")} className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: view === "ingreso" ? "#0b5b54" : BRAND, color: "#fff", fontWeight: 600 }}><PlusCircle size={13} /> Ingresar pedido</button>
           </div>}
           {audience === "cliente" && view === "dashboard" && week < TODAY_WEEK && <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
             <button onClick={() => setReport(week)} title="Semana cerrada · descarga el reporte completo (dashboard + detalle por campaña) en PDF" className="text-xs flex items-center gap-1 rounded-full px-3 py-1.5" style={{ background: BRAND, color: "#fff", fontWeight: 600 }}><FileText size={13} /> Descargar reporte (PDF)</button>
@@ -744,6 +743,7 @@ function Main({ onExit }) {
           {audience === "agencia" && <NavBtn id="lab" icon={UserPlus} label="9Lab" view={view} setView={setView} badge={items.filter((i) => i.lab && (isLab ? inScopePerson(i) : true)).length || null} />}
           {!dashDisabled && <NavBtn id="semana" icon={CalendarDays} label={audience === "cliente" ? "Planificación" : "Planificador"} view={view} setView={setView} />}
           <NavBtn id="retro" icon={Megaphone} label="Retroplanning" view={view} setView={setView} />
+          <NavBtn id="dashboard" icon={Gauge} label="Dashboard" view={view} setView={setView} disabled={dashDisabled} title={dashDisabled ? "El Dashboard depende de la capacidad de un segmento · no disponible en 'Todos mis segmentos'" : undefined} />
         </div>
 
         {audience === "agencia" && myReqs.length > 0 && (
@@ -790,15 +790,31 @@ function Main({ onExit }) {
   );
 }
 
-function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView, onExit, onConfig, notifs, reqs, onApprove, onReject, onReadNotifs, hideWeek, actingPO, setActingPO, actingExec, setActingExec, isDirector, isLab, showCap, setShowCap, myLines, view, setView, dashDisabled }) {
+function DemoBar({ audience, setAudience, actingExec, setActingExec, actingPO, setActingPO, isDirector, onSimular }) {
+  const sel = { background: "#2a2522", border: "1px solid #44403c", borderRadius: 8, padding: "4px 8px", fontSize: 12, color: "#fff", fontWeight: 600 };
+  return (
+    <div className="w-full" style={{ background: INK, color: PAPER }}>
+      <div className="max-w-5xl mx-auto px-6 py-2 flex items-center justify-between gap-3 flex-wrap">
+        <span className="flex items-center gap-2 text-xs" style={{ color: "#a8a29e", fontWeight: 600 }}><Eye size={13} /> Modo demo · controles solo para la presentación</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5"><span className="text-xs" style={{ color: "#a8a29e" }}>Ver como</span><select value={audience === "agencia" ? actingExec : actingPO} onChange={(e) => (audience === "agencia" ? setActingExec(e.target.value) : setActingPO(e.target.value))} style={sel}>{["Director", ...(audience === "agencia" ? [...EJECUTIVOS, LAB_EXEC] : POS)].map((n) => <option key={n} style={{ color: INK }}>{n}</option>)}</select></div>
+          <div className="flex items-center rounded-full p-0.5" style={{ background: "#3a3531" }}>{[{ id: "agencia", label: "Agencia", icon: ShieldCheck }, { id: "cliente", label: "Cliente", icon: Eye }].map((a) => <button key={a.id} onClick={() => setAudience(a.id)} className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs" style={{ background: audience === a.id ? "#fff" : "transparent", color: audience === a.id ? INK : "#d6d3d1", fontWeight: audience === a.id ? 600 : 500 }}><a.icon size={12} /> {a.label}</button>)}</div>
+          {audience === "agencia" && !isDirector && <button onClick={onSimular} title="Simular que es la mañana siguiente y la jornada anterior no se cerró" className="flex items-center gap-1 px-3 py-1 rounded-full text-xs" style={{ background: "#3a3531", color: "#fff", fontWeight: 600 }}><Clock size={13} /> Simular nuevo día</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView, onExit, onConfig, notifs, reqs, onApprove, onReject, onReadNotifs, hideWeek, actingPO, setActingPO, actingExec, setActingExec, isDirector, isLab, showCap, setShowCap, myLines, view, setView, dashDisabled, onCierre, onSimular, dueCount }) {
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <div className="flex items-center gap-3"><div className="rounded-xl flex items-center justify-center" style={{ width: 40, height: 40, background: INK }}><Workflow size={20} color={PAPER} /></div><div><div className="flex items-center gap-2"><span style={{ ...serif, fontSize: 23, fontWeight: 700, letterSpacing: -0.5 }}>Smart Business X</span><span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "#e7e5e4", color: "#57534e" }}>demo</span></div><div className="text-xs" style={{ color: "#78716c" }}>Tráfico operativo semanal · sobre COR</div></div></div>
+        <div className="flex items-center gap-3"><div className="rounded-xl flex items-center justify-center" style={{ width: 40, height: 40, background: INK }}><Workflow size={20} color={PAPER} /></div><div><div className="flex items-center gap-2"><span style={{ ...serif, fontSize: 23, fontWeight: 700, letterSpacing: -0.5 }}>Smart Business X</span></div><div className="text-xs" style={{ color: "#78716c" }}>Tráfico operativo semanal · sobre COR</div></div></div>
         <div className="flex items-center gap-2 flex-wrap">
           <HolidayChip setWeek={setWeek} />
           <NotifBell notifs={notifs} reqs={reqs} onApprove={onApprove} onReject={onReject} onReadNotifs={onReadNotifs} />
-          <div className="flex items-center rounded-full p-1" style={{ background: "#e7e5e4" }}>{[{ id: "agencia", label: "Agencia", icon: ShieldCheck }, { id: "cliente", label: "Cliente", icon: Eye }].map((a) => <button key={a.id} onClick={() => setAudience(a.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ background: audience === a.id ? "#fff" : "transparent", color: audience === a.id ? INK : "#78716c", fontWeight: audience === a.id ? 600 : 500 }}><a.icon size={13} /> {a.label}</button>)}</div>
+          {audience === "agencia" && !isDirector && <button onClick={onCierre} className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs" style={{ background: dueCount ? "#fffbeb" : "#e7e5e4", border: `1px solid ${dueCount ? "#fcd34d" : "transparent"}`, color: dueCount ? "#92400e" : "#57534e", fontWeight: 600 }}><ClipboardList size={13} /> Cierre del día{dueCount ? ` · ${dueCount}` : ""}</button>}
           <button onClick={onConfig} title="Configuración · entregables y SKUs" className="flex items-center justify-center rounded-full" style={{ width: 32, height: 32, background: "#e7e5e4", color: "#57534e" }}><Settings size={15} /></button>
           <button onClick={onExit} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs" style={{ background: "#e7e5e4", color: "#57534e", fontWeight: 600 }}><LogOut size={13} /> Salir</button>
         </div>
@@ -806,10 +822,6 @@ function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView,
       <div className="flex items-center gap-3 flex-wrap">
         {!isLab && <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><Layers size={14} /> Segmento:</span><select value={lineaView} onChange={(e) => setLineaView(e.target.value)} title={isDirector ? "El Director ve todos los segmentos o uno a la vez" : "Tus segmentos de negocio · uno a la vez o todos tus segmentos juntos"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600 }}>{isDirector ? <><option value="General">General (todos)</option>{LINEAS.map((l) => <option key={l}>{l}</option>)}</> : <>{myLines.length > 1 && <option value="General">Todos mis segmentos</option>}{myLines.map((l) => <option key={l}>{l}</option>)}</>}</select></div>}
         {isLab && <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={14} /> Agencia interna 9Lab · capacidad propia</span>}
-        {!isLab && <div className="h-4" style={{ width: 1, background: "#d6d3d1" }} />}
-        <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><User2 size={14} /> Ver como:</span><select value={audience === "agencia" ? actingExec : actingPO} onChange={(e) => (audience === "agencia" ? setActingExec(e.target.value) : setActingPO(e.target.value))} title={audience === "agencia" ? "Director ve todo · un ejecutivo ve sus proyectos · 9Lab solo lo delegado" : "Director ve todo · un PO ve solo sus campañas"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600, color: BRAND }}>{["Director", ...(audience === "agencia" ? [...EJECUTIVOS, LAB_EXEC] : POS)].map((n) => <option key={n}>{n}</option>)}</select></div>
-        <div className="h-4" style={{ width: 1, background: "#d6d3d1" }} />
-        <NavBtn id="dashboard" icon={Gauge} label="Dashboard" view={view} setView={setView} disabled={dashDisabled} title={dashDisabled ? "El Dashboard depende de la capacidad de un segmento · no disponible en 'Todos mis segmentos'" : undefined} />
         {!isLab && !isDirector && (lineaView === "General" ? <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: "#faf9f6", border: "1px solid #ece9e3", color: "#a8a29e", fontWeight: 600 }} title="La capacidad operativa no aplica al combinar varios segmentos"><Gauge size={14} /> Capacidad no disponible en vista combinada</span> : <button onClick={() => setShowCap((s) => !s)} className="flex items-center gap-2 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: showCap ? "#f0fdfa" : "#fff", border: `1px solid ${showCap ? "#bae6e0" : "#e7e5e4"}`, color: showCap ? "#115e59" : "#57534e", fontWeight: 600 }}><Gauge size={14} /> {showCap ? "Ocultar capacidad operativa" : "Ver capacidad operativa"} <ChevronDown size={13} style={{ transform: showCap ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></button>)}
       </div>
     </div>
