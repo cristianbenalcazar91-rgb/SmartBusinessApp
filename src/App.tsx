@@ -508,6 +508,7 @@ function Main({ onExit }) {
   const [view, setView] = useState("miSemana");
   const [audience, setAudience] = useState("agencia");
   const [week, setWeek] = useState(0);
+  const [allWeeks, setAllWeeks] = useState(false);
   const [closeDay, setCloseDay] = useState(null);
   const [lineaView, setLineaView] = useState("General");
   const [items, setItems] = useState(SEED);
@@ -707,7 +708,7 @@ function Main({ onExit }) {
   };
   const myLines = isDirector ? LINEAS : LINEAS.filter((l) => items.some((i) => (audience === "agencia" ? i.ejecutivo : i.poCliente) === me && i.linea === l));
   const dashDisabled = !isDirector && lineaView === "General";
-  useEffect(() => { if (dashDisabled && view === "dashboard" && !isLab) setView("pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); if (view === "personal" && !isDirector) setView(audience === "cliente" ? "pedidos" : "miSemana"); if (audience === "cliente" && view === "miSemana") setView("pedidos"); if (isLab && !["lab", "semana", "dashboard", "miSemana", "retro"].includes(view)) setView("lab"); }, [dashDisabled, view, audience, isLab]);
+  useEffect(() => { if (dashDisabled && view === "dashboard" && !isLab) setView("pedidos"); if (allWeeks && view === "dashboard") setView(isLab ? "lab" : "pedidos"); if (view === "aprobaciones" && audience !== "cliente") setView("pedidos"); if (view === "personal" && !isDirector) setView(audience === "cliente" ? "pedidos" : "miSemana"); if (audience === "cliente" && view === "miSemana") setView("pedidos"); if (isLab && !["lab", "semana", "dashboard", "miSemana", "retro"].includes(view)) setView("lab"); }, [dashDisabled, allWeeks, view, audience, isLab]);
   useEffect(() => { if (isLab) { setLineaView("9Lab"); return; } if (!isDirector && myLines.length) setLineaView(myLines[0]); }, [audience, actingExec, actingPO, isLab]);
   const delegarLab = (it) => { set(it.id, { lab: true, delegBy: it.delegBy || it.ejecutivo, ejecutivo: LAB_EXEC, log: [...(it.log || []), logEntry(me, `Delegada a 9Lab (antes ${it.ejecutivo})`)] }); notify({ sev: "info", forAgency: true, text: `"${skuById(it.skuId).name} · ${it.campana}" delegada a 9Lab.` }); fireToast(`${it.id} delegada a 9Lab`); };
   const devolverLab = (it) => { const back = it.delegBy || EJECUTIVOS[0]; set(it.id, { lab: false, ejecutivo: back, delegBy: null, log: [...(it.log || []), logEntry(me, `Devuelta de 9Lab a ${back}`)] }); fireToast(`${it.id} devuelta a ${back}`); };
@@ -717,7 +718,7 @@ function Main({ onExit }) {
   const markNotifsRead = () => { const ids = new Set(myNotifs.map((n) => n.id)); setNotifs((p) => p.map((n) => (ids.has(n.id) ? { ...n, read: true } : n))); };
   const approverName = me;
   const pedidosProps = {
-    items, audience, inWeek, inLinea, consByW, campOrder, lineaView, week, inScopePerson, isDirector,
+    items, audience, inWeek, inLinea, consByW, campOrder, lineaView, week, allWeeks, inScopePerson, isDirector,
     onAccept: (it) => setDecision({ item: it, action: "aceptar" }),
     onReject: (it) => { set(it.id, { estado: "rechazado" }); setSavedHours((h) => h + itemHours(it).tot); notify({ sev: "info", forAgency: true, forExec: it.ejecutivo, text: `${it.poCliente} rechazó "${skuById(it.skuId).name} · ${it.campana}".` }); fireToast(`${it.id} rechazado`); },
     onProvisional: (it) => setDecision({ item: it, action: "provisional" }),
@@ -735,20 +736,22 @@ function Main({ onExit }) {
     <div style={{ background: PAPER, color: INK, minHeight: 680 }} className="w-full">
       <DemoBar audience={audience} setAudience={setAudience} actingExec={actingExec} setActingExec={setActingExec} actingPO={actingPO} setActingPO={setActingPO} isDirector={isDirector} onSimular={() => setCloseDay({ mandatory: true, tasks: dueToday })} />
       <div className="max-w-5xl mx-auto px-6 py-6">
-        <Header audience={audience} setAudience={setAudience} week={week} setWeek={setWeek} lineaView={lineaView} setLineaView={setLineaView} onExit={onExit} onConfig={() => setCfg(true)} notifs={myNotifs} reqs={myReqs} onApprove={(r) => approveReq(r, approverName)} onReject={(r) => rejectReq(r, approverName)} onReadNotifs={markNotifsRead} hideWeek={view === "solicitudes" || view === "aprobaciones"} actingPO={actingPO} setActingPO={setActingPO} actingExec={actingExec} setActingExec={setActingExec} isDirector={isDirector} isLab={isLab} showCap={showCap} setShowCap={setShowCap} myLines={myLines} view={view} setView={setView} dashDisabled={dashDisabled} onCierre={() => setCloseDay({ mandatory: false, tasks: dueToday })} onSimular={() => setCloseDay({ mandatory: true, tasks: dueToday })} dueCount={dueToday.length} />
-        {view !== "personal" && (isLab || (!(! isDirector && lineaView === "General") && (isDirector || showCap))) && <CapStrip items={items} consByW={consByW} provByW={provByW} lineaView={lineaView} week={week} inLinea={inLinea} inWeek={inWeek} />}
+        <Header audience={audience} setAudience={setAudience} week={week} setWeek={setWeek} lineaView={lineaView} setLineaView={setLineaView} onExit={onExit} onConfig={() => setCfg(true)} notifs={myNotifs} reqs={myReqs} onApprove={(r) => approveReq(r, approverName)} onReject={(r) => rejectReq(r, approverName)} onReadNotifs={markNotifsRead} hideWeek={view === "solicitudes" || view === "aprobaciones"} actingPO={actingPO} setActingPO={setActingPO} actingExec={actingExec} setActingExec={setActingExec} isDirector={isDirector} isLab={isLab} showCap={showCap} setShowCap={setShowCap} myLines={myLines} view={view} setView={setView} dashDisabled={dashDisabled} allWeeks={allWeeks} onCierre={() => setCloseDay({ mandatory: false, tasks: dueToday })} onSimular={() => setCloseDay({ mandatory: true, tasks: dueToday })} dueCount={dueToday.length} />
+        {view !== "personal" && !allWeeks && (isLab || (!(! isDirector && lineaView === "General") && (isDirector || showCap))) && <CapStrip items={items} consByW={consByW} provByW={provByW} lineaView={lineaView} week={week} inLinea={inLinea} inWeek={inWeek} />}
         {view !== "personal" && <div className="flex items-center gap-2 mt-4 mb-4" style={{ minHeight: 30 }}>
           {view === "solicitudes" || view === "aprobaciones" ? <span className="flex items-center gap-1.5 text-xs" style={{ color: "#a8a29e" }}><Files size={14} /> {view === "aprobaciones" ? "Aprobaciones · reingresos de todas las semanas" : "Solicitudes de todas las semanas"}</span> : <>
             <span className="flex items-center gap-1.5 text-xs flex-shrink-0" style={{ color: "#78716c" }}><CalendarDays size={14} /> Semana:</span>
+            <button onClick={() => setAllWeeks(true)} title="Ver todas las tareas y priorizaciones, sin importar la fecha" className="px-3 py-1 rounded-full text-xs flex-shrink-0" style={{ background: allWeeks ? BRAND : "#ece9e3", color: allWeeks ? "#fff" : "#57534e", fontWeight: allWeeks ? 700 : 500, whiteSpace: "nowrap" }}>Todas</button>
+            <span className="flex-shrink-0" style={{ width: 1, height: 18, background: "#dcd9d3" }} />
             {(() => {
               const wkM = weeksInMonthOf(week), first = wkM[0], last = wkM[wkM.length - 1];
               const canPrev = first - 1 >= MINWEEK, canNext = last + 1 <= MAXWEEK;
-              const goMonth = (dir) => { const edge = dir < 0 ? first - 1 : last + 1; if (edge < MINWEEK || edge > MAXWEEK) return; setWeek(weeksInMonthOf(edge)[0]); };
+              const goMonth = (dir) => { const edge = dir < 0 ? first - 1 : last + 1; if (edge < MINWEEK || edge > MAXWEEK) return; setAllWeeks(false); setWeek(weeksInMonthOf(edge)[0]); };
               return <>
                 <button onClick={() => goMonth(-1)} disabled={!canPrev} title="Mes anterior" className="rounded-full flex items-center justify-center flex-shrink-0" style={{ width: 26, height: 26, background: "#ece9e3", color: canPrev ? "#57534e" : "#d6d3d1" }}><ArrowLeft size={14} /></button>
                 <span className="text-xs flex-shrink-0" style={{ fontWeight: 700, color: INK, textTransform: "capitalize", minWidth: 64, textAlign: "center" }}>{monthOf(week)}</span>
                 <button onClick={() => goMonth(1)} disabled={!canNext} title="Mes siguiente" className="rounded-full flex items-center justify-center flex-shrink-0" style={{ width: 26, height: 26, background: "#ece9e3", color: canNext ? "#57534e" : "#d6d3d1" }}><ArrowRight size={14} /></button>
-                <div className="flex items-center gap-1 overflow-x-auto" style={{ minWidth: 0, paddingBottom: 2 }}>{wkM.map((i) => <button key={i} onClick={() => setWeek(i)} className="px-3 py-1 rounded-full text-xs flex-shrink-0" style={{ background: week === i ? INK : "#ece9e3", color: week === i ? PAPER : "#57534e", fontWeight: week === i ? 600 : 500, whiteSpace: "nowrap", boxShadow: i === 0 && week !== 0 ? `inset 0 0 0 1.5px ${BRAND}` : "none" }}>{i === 0 ? "Sem. actual" : weekRange(i)}</button>)}</div>
+                <div className="flex items-center gap-1 overflow-x-auto" style={{ minWidth: 0, paddingBottom: 2 }}>{wkM.map((i) => <button key={i} onClick={() => { setAllWeeks(false); setWeek(i); }} className="px-3 py-1 rounded-full text-xs flex-shrink-0" style={{ background: (!allWeeks && week === i) ? INK : "#ece9e3", color: (!allWeeks && week === i) ? PAPER : "#57534e", fontWeight: (!allWeeks && week === i) ? 600 : 500, whiteSpace: "nowrap", boxShadow: i === 0 && (allWeeks || week !== 0) ? `inset 0 0 0 1.5px ${BRAND}` : "none" }}>{i === 0 ? "Sem. actual" : weekRange(i)}</button>)}</div>
               </>;
             })()}
           </>}
@@ -814,7 +817,7 @@ function Main({ onExit }) {
         {view === "solicitudes" && <Pedidos {...pedidosProps} mode="solicitudes" />}
         {view === "aprobaciones" && audience === "cliente" && <Pedidos {...pedidosProps} mode="aprobaciones" />}
         {view === "lab" && audience === "agencia" && <Pedidos {...pedidosProps} mode="lab" />}
-        {view === "prioridades" && audience === "cliente" && <Prioridades items={items} consAll={consAll} inWeek={inWeek} campOrder={campOrder} onReorderItem={reorderItem} onReorderCamp={reorderCamp} onSetPrio={setPrioridad} week={week} actingPO={actingPO} onAdvance={advanceItem} onRequest={requestAdvance} onDelay={delayItem} />}
+        {view === "prioridades" && audience === "cliente" && <Prioridades items={items} consAll={consAll} inWeek={inWeek} campOrder={campOrder} onReorderItem={reorderItem} onReorderCamp={reorderCamp} onSetPrio={setPrioridad} week={week} allWeeks={allWeeks} actingPO={actingPO} onAdvance={advanceItem} onRequest={requestAdvance} onDelay={delayItem} />}
         {view === "semana" && <SemanaView items={items} audience={audience} inLinea={inLinea} lineaView={lineaView} campOrder={campOrder} week={week} me={me} isDirector={isDirector} onOpenCor={openCor} onCopy={copyLink} onMoveDia={moveDia} onReset={resetDia} onOpenSplit={setSplitDays} onReplace={plannerReplace} onRequestMove={requestPlannerMove} />}
         {view === "ingreso" && audience === "agencia" && <Ingreso onAdd={addItems} week={week} actingExec={actingExec} isDirector={isDirector} lineaView={lineaView} campaigns={[...new Map(items.filter((it) => it.campana).map((it) => [it.campana, { name: it.campana, marca: it.marca, linea: it.linea, fAire: it.fAire }])).values()]} />}
       </div>
@@ -849,7 +852,7 @@ function DemoBar({ audience, setAudience, actingExec, setActingExec, actingPO, s
   );
 }
 
-function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView, onExit, onConfig, notifs, reqs, onApprove, onReject, onReadNotifs, hideWeek, actingPO, setActingPO, actingExec, setActingExec, isDirector, isLab, showCap, setShowCap, myLines, view, setView, dashDisabled, onCierre, onSimular, dueCount }) {
+function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView, onExit, onConfig, notifs, reqs, onApprove, onReject, onReadNotifs, hideWeek, actingPO, setActingPO, actingExec, setActingExec, isDirector, isLab, showCap, setShowCap, myLines, view, setView, dashDisabled, allWeeks, onCierre, onSimular, dueCount }) {
   return (
     <div>
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -866,7 +869,7 @@ function Header({ audience, setAudience, week, setWeek, lineaView, setLineaView,
         {!isLab && <div className="flex items-center gap-1.5"><span className="flex items-center gap-1.5 text-xs" style={{ color: "#78716c" }}><Layers size={14} /> Segmento:</span><select value={lineaView} disabled={view === "personal"} onChange={(e) => setLineaView(e.target.value)} title={view === "personal" ? "Bloqueado en Gestión de equipo (vista de todos los segmentos)" : isDirector ? "El Director ve todos los segmentos o uno a la vez" : "Tus segmentos de negocio · uno a la vez o todos tus segmentos juntos"} style={{ ...dateInput, padding: "5px 9px", fontWeight: 600, opacity: view === "personal" ? 0.5 : 1, cursor: view === "personal" ? "not-allowed" : "pointer" }}>{isDirector ? <><option value="General">General (todos)</option>{LINEAS.map((l) => <option key={l}>{l}</option>)}</> : <>{myLines.length > 1 && <option value="General">Todos mis segmentos</option>}{myLines.map((l) => <option key={l}>{l}</option>)}</>}</select></div>}
         {isLab && <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ background: "#eef2ff", color: "#1e40af", fontWeight: 600 }}><UserPlus size={14} /> Agencia interna 9Lab · capacidad propia</span>}
         <div className="h-4" style={{ width: 1, background: "#d6d3d1" }} />
-        <NavBtn id="dashboard" icon={Gauge} label="Dashboard" view={view} setView={setView} disabled={dashDisabled} title={dashDisabled ? "El Dashboard depende de la capacidad de un segmento · no disponible en 'Todos mis segmentos'" : undefined} />
+        <NavBtn id="dashboard" icon={Gauge} label="Dashboard" view={view} setView={setView} disabled={dashDisabled || allWeeks} title={allWeeks ? "El Dashboard no aplica con 'Todas' las semanas seleccionadas" : dashDisabled ? "El Dashboard depende de la capacidad de un segmento · no disponible en 'Todos mis segmentos'" : undefined} />
         {isDirector && <NavBtn id="personal" icon={Users} label="Gestión de equipo" view={view} setView={setView} />}
         {(() => { const camp = view !== "dashboard" && view !== "personal"; const defOp = isLab ? "lab" : audience === "cliente" ? "solicitudes" : "miSemana"; return <button onClick={() => { if (!camp) setView(defOp); }} title="Tareas, solicitudes y planificación de las campañas" className="flex items-center gap-2 px-4 py-2 rounded-full text-sm flex-shrink-0 whitespace-nowrap" style={{ background: camp ? INK : "transparent", color: camp ? PAPER : "#57534e", fontWeight: camp ? 600 : 500 }}><Megaphone size={16} /> Campañas</button>; })()}
         {!isLab && !isDirector && (lineaView === "General" ? <span className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: "#faf9f6", border: "1px solid #ece9e3", color: "#a8a29e", fontWeight: 600 }} title="La capacidad operativa no aplica al combinar varios segmentos"><Gauge size={14} /> Capacidad no disponible en vista combinada</span> : <button onClick={() => setShowCap((s) => !s)} className="flex items-center gap-2 text-xs rounded-full px-3 py-1.5" style={{ marginLeft: "auto", background: showCap ? "#f0fdfa" : "#fff", border: `1px solid ${showCap ? "#bae6e0" : "#e7e5e4"}`, color: showCap ? "#115e59" : "#57534e", fontWeight: 600 }}><Gauge size={14} /> {showCap ? "Ocultar capacidad operativa" : "Ver capacidad operativa"} <ChevronDown size={13} style={{ transform: showCap ? "rotate(180deg)" : "none", transition: "transform .15s" }} /></button>)}
@@ -1565,7 +1568,7 @@ function Dashboard({ consByW, provByW, items, audience, lineaView, setLineaView,
   );
 }
 
-function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, campOrder, lineaView, week, inScopePerson, isDirector, isLab, onAccept, onReject, onProvisional, onReactivar, onEdit, onDelete, onEjec, onCopy, onOpenCor, onTime, onArchive, onArchiveCamp, onRetro, onDelegar, onDevolver }) {
+function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, campOrder, lineaView, week, allWeeks, inScopePerson, isDirector, isLab, onAccept, onReject, onProvisional, onReactivar, onEdit, onDelete, onEjec, onCopy, onOpenCor, onTime, onArchive, onArchiveCamp, onRetro, onDelegar, onDevolver }) {
   const sol = mode === "solicitudes";
   const apr = mode === "aprobaciones";
   const lab = mode === "lab";
@@ -1573,7 +1576,7 @@ function Pedidos({ items, audience, mode = "tareas", inWeek, inLinea, consByW, c
   const [fEje, setFEje] = useState("todos"); const [fCamp, setFCamp] = useState("todas"); const [fPo, setFPo] = useState("todos"); const [fEst, setFEst] = useState("todos"); const [fArch, setFArch] = useState("activas"); const [fWk, setFWk] = useState("todas"); const [fSort, setFSort] = useState("antiguas");
   const [open, setOpen] = useState({});
   let list = lab ? items.filter((i) => i.lab) : items.filter(inLinea).filter(inScopePerson).filter((i) => !i.lab);
-  if (!solLike && !lab) list = list.filter(inWeek);
+  if (!solLike && !lab && !allWeeks) list = list.filter(inWeek);
   if (apr) list = list.filter((i) => i.reentry && ["pausada", "revision", "provisional"].includes(i.estado));
   else if (sol) { if (audience === "cliente") list = list.filter((i) => !i.reentry && (i.estado === "revision" || i.estado === "provisional")); else list = list.filter((i) => i.estado === "revision" || i.estado === "provisional" || i.estado === "pausada" || i.estado === "borrador"); }
   else list = list.filter((i) => i.estado === "aceptado").filter((i) => (fArch === "archivadas" ? i.archivado : !i.archivado));
@@ -1788,7 +1791,7 @@ function AdvanceModal({ entry, mode = "urgente", items, consAll, actingPO, onClo
   );
 }
 
-function Prioridades({ items, consAll, inWeek, campOrder, onReorderItem, onReorderCamp, onSetPrio, week, actingPO, onAdvance, onRequest, onDelay }) {
+function Prioridades({ items, consAll, inWeek, campOrder, onReorderItem, onReorderCamp, onSetPrio, week, allWeeks, actingPO, onAdvance, onRequest, onDelay }) {
   const [advFor, setAdvFor] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
   const [open, setOpen] = useState({});
@@ -1804,7 +1807,7 @@ function Prioridades({ items, consAll, inWeek, campOrder, onReorderItem, onReord
   const dpIdx = (it) => { if (it.dayPlan) { const ks = Object.keys(it.dayPlan).map(Number).filter((d) => it.dayPlan[d] > 0); return ks.length ? ks : null; } if (it.dia != null) return [it.dia]; return null; };
   const startIso = (it) => { const dp = dpIdx(it); const di = dp ? Math.min(...dp) : (it.sem === TODAY_WEEK ? Math.max(0, TODAY_IDX) : 0); return iso(weekDays(it.sem)[di] || weekStart(it.sem)); };
   const taskMovable = (it) => it.ejecucion !== "proceso" && startIso(it) >= eIso;
-  const active = items.filter((i) => !i.archivado && i.ejecucion !== "entregada" && ["revision", "provisional", "aceptado"].includes(i.estado)).filter(inWeek);
+  const active = items.filter((i) => !i.archivado && i.ejecucion !== "entregada" && ["revision", "provisional", "aceptado"].includes(i.estado)).filter(allWeeks ? () => true : inWeek);
   const involved = (c) => isDir || active.some((i) => i.campana === c && i.poCliente === actingPO);
   const camps = [...campOrder.filter((c) => active.some((i) => i.campana === c)), ...[...new Set(active.map((i) => i.campana))].filter((c) => !campOrder.includes(c))].filter(involved);
   const campMov = {}; camps.forEach((c) => (campMov[c] = active.filter((i) => i.campana === c).some(taskMovable)));
